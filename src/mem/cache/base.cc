@@ -1685,6 +1685,20 @@ BaseCache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
         assert(pkt->getSize() == blkSize);
 
         updateBlockData(blk, pkt, has_old_data);
+
+	// Preserve EMISSARY metadata when a lower-level line fills this cache.
+	blk->starveHistory = pkt->starveHistory;
+        blk->starveCount = pkt->starveCount;
+        if (pkt->isStarved()) {
+            blk->setStarved();
+        } else {
+            blk->clearStarved();
+        }
+        if (pkt->isPreserve()) {
+            blk->setPreserve();
+        } else {
+            blk->clearPreserve();
+        }
     }
     // The block will be ready when the payload arrives and the fill is done
     blk->setWhenReady(clockEdge(fillLatency) + pkt->headerDelay +

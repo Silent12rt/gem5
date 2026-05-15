@@ -397,7 +397,7 @@ Fetch::processCacheCompletion(PacketPtr pkt)
             static_cast<double>(rng->random<uint32_t>(0, 9999)) / 100.0;
         const bool preserve = randomStarve ?
             (random < starveRandomness) :
-            (starveAtleast == 0 || pkt->starveCount >= starveAtleast);
+	    (starveAtleast == 0 || pkt->starveCount + 1 >= starveAtleast);
         mark_pkt->setPreserve(preserve);
 
         if (!icachePort.sendTimingReq(mark_pkt)) {
