@@ -49,13 +49,21 @@ LRUEmissary::LRUEmissary(const Params &p)
     : Base(p),
       lru_ways(p.lru_ways),
       preserve_ways(p.preserve_ways),
+      effective_preserve_ways(p.preserve_ways),
       last_tick(0),
       numSets(0),
       numWays(0),
       flush_freq_in_cycles(p.flush_freq_in_cycles),
       max_age(p.max_val),
-      indexingPolicy(nullptr)
+      adaptive_preserve(p.adaptive_preserve),
+      adaptive_target_saturation(p.adaptive_target_saturation),
+      adaptive_min_preserve_ways(p.adaptive_min_preserve_ways),
+      indexingPolicy(nullptr),
+      stats(this)
 {
+    if (adaptive_min_preserve_ways > preserve_ways) {
+        adaptive_min_preserve_ways = preserve_ways;
+    }
     registerExitCallback([this]() { dumpPreserveHist(); });
 }
 
@@ -146,6 +154,12 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
         auto repl =
             std::static_pointer_cast<LRUEmissaryReplData>(candidate->replacementData);
         if (repl->lastTouchTick == 0) {
+            auto *blk = static_cast<CacheBlk*>(candidate);
+            if (blk->isPreserve()) {
+                stats.preserveVictims++;
+            } else {
+                stats.nonPreserveVictims++;
+            }
             return candidate;
         }
 
@@ -178,9 +192,11 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
         resetAll(candidates, false);
     }
 
-    if (num_preserved > preserve_ways) {
+    if (num_preserved > effective_preserve_ways) {
+        stats.preserveVictims++;
         return preserved_victim;
     }
+    stats.nonPreserveVictims++;
     return victim_not_preserved;
 }
 
@@ -206,6 +222,7 @@ LRUEmissary::checkToFlushPreserveBits()
     const uint64_t cur_tick = curTick();
     if (((cur_tick - last_tick) / 500) >= flush_freq_in_cycles) {
         dumpPreserveHist();
+        stats.preserveFlushes++;
         last_tick = cur_tick;
     }
 }
@@ -226,6 +243,7 @@ LRUEmissary::dumpPreserveHist()
         preserveCountHist[i] = 0;
     }
 
+    int saturatedSets = 0;
     for (int set = 0; set < numSets; set++) {
         int numPreserved = 0;
         for (int way = 0; way < numWays; way++) {
@@ -234,12 +252,19 @@ LRUEmissary::dumpPreserveHist()
             if (blk->isPreserve()) {
                 numPreserved++;
             }
-            if (!blk->isUsed()) {
+            if (blk->isPreserve() && !blk->isUsed()) {
+                stats.preserveClears++;
                 blk->clearPreserve();
             }
             blk->clearUsed();
         }
 
+        if (numPreserved >= effective_preserve_ways) {
+            saturatedSets++;
+        }
+        if (numPreserved > effective_preserve_ways) {
+            stats.quotaExceededSets++;
+        }
         if (numPreserved >= preserve_ways) {
             preserveCountHist[preserve_ways]++;
         } else {
@@ -251,6 +276,38 @@ LRUEmissary::dumpPreserveHist()
         histOut << preserveCountHist[i] << ",";
     }
     histOut << "\n";
+
+    if (adaptive_preserve && numSets > 0) {
+        const double saturatedPct = 100.0 * saturatedSets / numSets;
+        if (saturatedPct > adaptive_target_saturation &&
+            effective_preserve_ways > adaptive_min_preserve_ways) {
+            effective_preserve_ways--;
+            stats.adaptiveTightens++;
+        } else if (saturatedPct < adaptive_target_saturation / 2.0 &&
+                   effective_preserve_ways < preserve_ways) {
+            effective_preserve_ways++;
+            stats.adaptiveRelaxes++;
+        }
+    }
+}
+
+LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
+  : statistics::Group(parent),
+    ADD_STAT(preserveVictims, statistics::units::Count::get(),
+             "Number of victim selections from preserve lines"),
+    ADD_STAT(nonPreserveVictims, statistics::units::Count::get(),
+             "Number of victim selections from non-preserve lines"),
+    ADD_STAT(quotaExceededSets, statistics::units::Count::get(),
+             "Number of sets observed above the preserve-way quota"),
+    ADD_STAT(preserveClears, statistics::units::Count::get(),
+             "Number of preserve bits cleared by epoch flushing"),
+    ADD_STAT(preserveFlushes, statistics::units::Count::get(),
+             "Number of preserve epoch flushes"),
+    ADD_STAT(adaptiveTightens, statistics::units::Count::get(),
+             "Number of adaptive preserve quota decrements"),
+    ADD_STAT(adaptiveRelaxes, statistics::units::Count::get(),
+             "Number of adaptive preserve quota increments")
+{
 }
 
 } // namespace replacement_policy

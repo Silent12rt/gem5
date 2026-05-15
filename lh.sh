@@ -4,4 +4,4 @@
 --cmd=/home/gem5/benchmarks/emissary_effect_test \
 --cpu-type=DerivO3CPU \
 --caches --l2cache \
-
+--l2_size=128kB --l2_assoc=8

@@ -169,6 +169,15 @@ class BaseCPU(ClockedObject):
         0, "Minimum starvation history count in last window to preserve"
     )
     randomStarve = Param.Bool(False, "Use random starvation marking")
+    emissaryRequireIQEmpty = Param.Bool(
+        False, "Require an empty issue queue before EMISSARY line marking"
+    )
+    emissarySampleRate = Param.Float(
+        100.0, "Percentage of eligible EMISSARY candidates to sample"
+    )
+    emissaryRngSeed = Param.Unsigned(
+        0, "Non-zero seed for EMISSARY fetch-stage sampling"
+    )
     enableStarvationEMISSARY = Param.Bool(
         False, "Enable starvation-driven EMISSARY line marking"
     )

@@ -541,6 +541,12 @@ class Fetch
     uint32_t starveAtleast;
     /** Whether to use random preserve insertion instead of threshold. */
     bool randomStarve;
+    /** Require an empty issue queue for paper-style S&E marking. */
+    bool emissaryRequireIQEmpty;
+    /** Percentage of eligible EMISSARY candidates to sample. */
+    double emissarySampleRate;
+    /** Non-zero seed for EMISSARY fetch-stage sampling. */
+    uint32_t emissaryRngSeed;
 
     /** Instruction port. Note that it has to appear after the fetch stage. */
     IcachePort icachePort;
@@ -584,6 +590,18 @@ class Fetch
          * due to a squash.
          */
         statistics::Scalar tlbSquashes;
+        /** EMISSARY candidate misses after the decode-starvation check. */
+        statistics::Scalar emissaryCandidates;
+        /** EMISSARY candidates rejected because the issue queue was non-empty. */
+        statistics::Scalar emissaryIQRejects;
+        /** EMISSARY candidates rejected by random sampling. */
+        statistics::Scalar emissarySampleRejects;
+        /** EMISSARY candidates marked as starved but not preserved. */
+        statistics::Scalar emissaryThresholdRejects;
+        /** EMISSARY starved mark requests sent to the I-cache. */
+        statistics::Scalar emissaryMarks;
+        /** EMISSARY mark requests that requested L2 preservation. */
+        statistics::Scalar emissaryPreserves;
         /** Distribution of number of instructions fetched each cycle. */
         statistics::Distribution nisnDist;
         /** Rate of how often fetch was idle. */

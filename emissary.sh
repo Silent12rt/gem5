@@ -5,6 +5,7 @@
 --cpu-type=DerivO3CPU \
 --caches --l2cache \
 --l2_rp=LRUEmissary \
---lru_ways=2 --preserve_ways=6 \
+--l2_size=128kB --l2_assoc=8 \
+--lru_ways=4 --preserve_ways=4 \
 --emissary-enable \
---starveAtleast=2 --starveRandomness=100 \
+--starveAtleast=2 --starveRandomness=100

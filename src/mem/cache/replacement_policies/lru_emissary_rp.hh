@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "base/statistics.hh"
 #include "mem/cache/cache_blk.hh"
 #include "mem/cache/replacement_policies/base.hh"
 
@@ -66,12 +67,29 @@ class LRUEmissary : public Base
 
     int lru_ways;
     int preserve_ways;
+    int effective_preserve_ways;
     uint64_t last_tick;
     int numSets;
     int numWays;
     uint64_t flush_freq_in_cycles;
     uint32_t max_age;
+    bool adaptive_preserve;
+    double adaptive_target_saturation;
+    int adaptive_min_preserve_ways;
     TaggedIndexingPolicy *indexingPolicy;
+
+    mutable struct LRUEmissaryStats : public statistics::Group
+    {
+        LRUEmissaryStats(statistics::Group* parent);
+
+        statistics::Scalar preserveVictims;
+        statistics::Scalar nonPreserveVictims;
+        statistics::Scalar quotaExceededSets;
+        statistics::Scalar preserveClears;
+        statistics::Scalar preserveFlushes;
+        statistics::Scalar adaptiveTightens;
+        statistics::Scalar adaptiveRelaxes;
+    } stats;
 
     explicit LRUEmissary(const Params &p);
     ~LRUEmissary() = default;

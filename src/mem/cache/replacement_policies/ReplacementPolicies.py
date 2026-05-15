@@ -90,6 +90,13 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0, "Frequency in cycles to flush preserve usage counters"
     )
     max_val = Param.Unsigned(32, "Max replacement age value")
+    adaptive_preserve = Param.Bool(False, "Adapt preserve quota by epoch")
+    adaptive_target_saturation = Param.Float(
+        25.0, "Target percentage of saturated sets for adaptive preserve"
+    )
+    adaptive_min_preserve_ways = Param.Unsigned(
+        1, "Minimum effective preserve ways under adaptive preserve"
+    )
 
 class BIPRP(LRURP):
     type = "BIPRP"

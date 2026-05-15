@@ -152,6 +152,15 @@ def config_cache(options, system):
                 system.l2.replacement_policy.flush_freq_in_cycles = (
                     options.hist_freq_cycles
                 )
+            system.l2.replacement_policy.adaptive_preserve = (
+                options.adaptive_preserve
+            )
+            system.l2.replacement_policy.adaptive_target_saturation = (
+                options.adaptive_target_saturation
+            )
+            system.l2.replacement_policy.adaptive_min_preserve_ways = max(
+                0, min(int(options.adaptive_min_preserve_ways), preserve_ways)
+            )
 
         system.tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
         system.l2.cpu_side = system.tol2bus.mem_side_ports

@@ -267,6 +267,9 @@ for i in range(np):
     system.cpu[i].starveRandomness = args.starveRandomness
     system.cpu[i].starveAtleast = args.starveAtleast
     system.cpu[i].randomStarve = args.randomStarve
+    system.cpu[i].emissaryRequireIQEmpty = args.emissary_require_iq_empty
+    system.cpu[i].emissarySampleRate = args.emissary_sample_rate
+    system.cpu[i].emissaryRngSeed = args.emissary_rng_seed
 
     system.cpu[i].createThreads()
 
