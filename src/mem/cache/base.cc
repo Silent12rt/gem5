@@ -1686,8 +1686,8 @@ BaseCache::handleFill(PacketPtr pkt, CacheBlk *blk, PacketList &writebacks,
 
         updateBlockData(blk, pkt, has_old_data);
 
-        // Preserve EMISSARY metadata when a lower-level line fills this cache.
-        blk->starveHistory = pkt->starveHistory;
+	// Preserve EMISSARY metadata when a lower-level line fills this cache.
+	blk->starveHistory = pkt->starveHistory;
         blk->starveCount = pkt->starveCount;
         if (pkt->isStarved()) {
             blk->setStarved();

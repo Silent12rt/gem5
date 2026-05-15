@@ -136,19 +136,12 @@ Fetch::Fetch(CPU *_cpu, const BaseO3CPUParams &params)
       starveRandomness(params.starveRandomness),
       starveAtleast(params.starveAtleast),
       randomStarve(params.randomStarve),
-      emissaryRequireIQEmpty(params.emissaryRequireIQEmpty),
-      emissarySampleRate(params.emissarySampleRate),
-      emissaryRngSeed(params.emissaryRngSeed),
       icachePort(this, _cpu),
       finishTranslationEvent(this),
       maxFTPerCycle(params.maxFTPerCycle),
       maxTakenPredPerCycle(params.maxTakenPredPerCycle),
       fetchStats(_cpu, this)
 {
-    if (emissaryRngSeed != 0) {
-        rng->init(emissaryRngSeed);
-    }
-
     if (numThreads > MaxThreads)
         fatal("numThreads (%d) is larger than compiled limit (%d),\n"
               "\tincrease MaxThreads in src/cpu/o3/limits.hh\n",
@@ -224,18 +217,6 @@ Fetch::FetchStatGroup::FetchStatGroup(CPU *cpu, Fetch *fetch)
                "Number of outstanding Icache misses that were squashed"),
       ADD_STAT(tlbSquashes, statistics::units::Count::get(),
                "Number of outstanding ITLB misses that were squashed"),
-      ADD_STAT(emissaryCandidates, statistics::units::Count::get(),
-               "Number of EMISSARY candidate misses after starvation check"),
-      ADD_STAT(emissaryIQRejects, statistics::units::Count::get(),
-               "Number of EMISSARY candidates rejected by non-empty IQ"),
-      ADD_STAT(emissarySampleRejects, statistics::units::Count::get(),
-               "Number of EMISSARY candidates rejected by sampling"),
-      ADD_STAT(emissaryThresholdRejects, statistics::units::Count::get(),
-               "Number of EMISSARY marks sent without preservation"),
-      ADD_STAT(emissaryMarks, statistics::units::Count::get(),
-               "Number of EMISSARY mark requests sent"),
-      ADD_STAT(emissaryPreserves, statistics::units::Count::get(),
-               "Number of EMISSARY mark requests requesting preservation"),
       ADD_STAT(nisnDist, statistics::units::Count::get(),
                "Number of instructions fetched each cycle (Total)"),
       ADD_STAT(idleRate, statistics::units::Ratio::get(),
@@ -255,12 +236,6 @@ Fetch::FetchStatGroup::FetchStatGroup(CPU *cpu, Fetch *fetch)
     noActiveThreadStallCycles.prereq(noActiveThreadStallCycles);
     icacheSquashes.prereq(icacheSquashes);
     tlbSquashes.prereq(tlbSquashes);
-    emissaryCandidates.prereq(emissaryCandidates);
-    emissaryIQRejects.prereq(emissaryIQRejects);
-    emissarySampleRejects.prereq(emissarySampleRejects);
-    emissaryThresholdRejects.prereq(emissaryThresholdRejects);
-    emissaryMarks.prereq(emissaryMarks);
-    emissaryPreserves.prereq(emissaryPreserves);
     ftNumber.init(0, fetch->maxFTPerCycle, 1);
     nisnDist
         .init(/* base value */ 0,
@@ -405,49 +380,28 @@ Fetch::processCacheCompletion(PacketPtr pkt)
 
     if (enableStarvationEMISSARY && fromDecode->decodeIdle[tid] &&
         pkt->req->getAccessDepth() > 0) {
-        ++fetchStats.emissaryCandidates;
+        RequestPtr mark_req = std::make_shared<Request>(
+            pkt->req->getVaddr(), fetchBufferSize, Request::INST_FETCH,
+            cpu->instRequestorId(), pkt->req->getPC(),
+            cpu->thread[tid]->contextId());
+        if (pkt->req->hasPaddr()) {
+            mark_req->setPaddr(pkt->req->getPaddr());
+        }
+        mark_req->taskId(cpu->taskId());
 
-        const bool issue_queue_empty = fromIEW->iewInfo[tid].iqCount == 0;
-        if (emissaryRequireIQEmpty && !issue_queue_empty) {
-            ++fetchStats.emissaryIQRejects;
-        } else {
-            const double sample =
-                static_cast<double>(rng->random<uint32_t>(0, 9999)) / 100.0;
-            if (sample >= emissarySampleRate) {
-                ++fetchStats.emissarySampleRejects;
-            } else {
-                RequestPtr mark_req = std::make_shared<Request>(
-                    pkt->req->getVaddr(), fetchBufferSize, Request::INST_FETCH,
-                    cpu->instRequestorId(), pkt->req->getPC(),
-                    cpu->thread[tid]->contextId());
-                if (pkt->req->hasPaddr()) {
-                    mark_req->setPaddr(pkt->req->getPaddr());
-                }
-                mark_req->taskId(cpu->taskId());
+        PacketPtr mark_pkt = new Packet(mark_req, MemCmd::ReadReq);
+        mark_pkt->dataDynamic(new uint8_t[fetchBufferSize]);
+        mark_pkt->setStarved(true);
 
-                PacketPtr mark_pkt = new Packet(mark_req, MemCmd::ReadReq);
-                mark_pkt->dataDynamic(new uint8_t[fetchBufferSize]);
-                mark_pkt->setStarved(true);
+        const double random =
+            static_cast<double>(rng->random<uint32_t>(0, 9999)) / 100.0;
+        const bool preserve = randomStarve ?
+            (random < starveRandomness) :
+	    (starveAtleast == 0 || pkt->starveCount + 1 >= starveAtleast);
+        mark_pkt->setPreserve(preserve);
 
-                const double random =
-                    static_cast<double>(
-                        rng->random<uint32_t>(0, 9999)) / 100.0;
-                const bool preserve = randomStarve ?
-                    (random < starveRandomness) :
-                    (starveAtleast == 0 ||
-                     pkt->starveCount + 1 >= starveAtleast);
-                mark_pkt->setPreserve(preserve);
-                ++fetchStats.emissaryMarks;
-                if (preserve) {
-                    ++fetchStats.emissaryPreserves;
-                } else {
-                    ++fetchStats.emissaryThresholdRejects;
-                }
-
-                if (!icachePort.sendTimingReq(mark_pkt)) {
-                    delete mark_pkt;
-                }
-            }
+        if (!icachePort.sendTimingReq(mark_pkt)) {
+            delete mark_pkt;
         }
     }
 
