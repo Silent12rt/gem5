@@ -36,7 +36,9 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
+#include "base/random.hh"
 #include "base/statistics.hh"
 #include "mem/cache/cache_blk.hh"
 #include "mem/cache/replacement_policies/base.hh"
@@ -76,6 +78,35 @@ class LRUEmissary : public Base
     bool adaptive_preserve;
     double adaptive_target_saturation;
     int adaptive_min_preserve_ways;
+    bool q_learning_preserve;
+    double q_learning_alpha;
+    double q_learning_gamma;
+    double q_learning_epsilon;
+    double q_learning_target_saturation;
+    int q_learning_min_preserve_ways;
+    double q_reward_non_preserve_victim;
+    double q_penalty_preserve_victim;
+    double q_penalty_quota_exceeded;
+    double q_penalty_saturation;
+    double q_reward_preserve_hit;
+    double q_penalty_admitted_preserve;
+    bool q_learning_set_guard;
+    uint64_t q_learning_seed;
+    int q_num_actions;
+    int q_num_states;
+    int q_last_state;
+    int q_last_action;
+    bool q_has_last;
+    bool q_log_header_written;
+    std::vector<double> q_values;
+    std::vector<double> q_admission_rates;
+    Random::RandomPtr q_rng;
+    mutable uint64_t epoch_preserve_hits;
+    mutable uint64_t epoch_admission_accepts;
+    mutable uint64_t epoch_admission_rejects;
+    mutable uint64_t epoch_preserve_victims;
+    mutable uint64_t epoch_non_preserve_victims;
+    mutable uint64_t epoch_quota_exceeded_sets;
     TaggedIndexingPolicy *indexingPolicy;
 
     mutable struct LRUEmissaryStats : public statistics::Group
@@ -89,6 +120,14 @@ class LRUEmissary : public Base
         statistics::Scalar preserveFlushes;
         statistics::Scalar adaptiveTightens;
         statistics::Scalar adaptiveRelaxes;
+        statistics::Scalar qLearningUpdates;
+        statistics::Scalar qLearningExplores;
+        statistics::Scalar qLearningExploits;
+        statistics::Scalar qLearningActionSum;
+        statistics::Scalar qAdmissionAccepts;
+        statistics::Scalar qAdmissionRejects;
+        statistics::Scalar qAdmissionGuardRejects;
+        statistics::Scalar preserveHits;
     } stats;
 
     explicit LRUEmissary(const Params &p);
@@ -97,8 +136,14 @@ class LRUEmissary : public Base
     void invalidate(
         const std::shared_ptr<ReplacementData>& replacement_data) override;
     void touch(
+        const std::shared_ptr<ReplacementData>& replacement_data,
+        const PacketPtr pkt) override;
+    void touch(
         const std::shared_ptr<ReplacementData>& replacement_data) const
         override;
+    void reset(
+        const std::shared_ptr<ReplacementData>& replacement_data,
+        const PacketPtr pkt) override;
     void reset(
         const std::shared_ptr<ReplacementData>& replacement_data) const
         override;
@@ -114,6 +159,24 @@ class LRUEmissary : public Base
   private:
     void checkLRU(const std::shared_ptr<ReplacementData>& replacement_data) const;
     void resetAll(const ReplacementCandidates& candidates, bool preservedWays) const;
+    double qActionToAdmissionRate(int action) const;
+    int countSetPreserves(CacheBlk *blk) const;
+    void qApplyAdmission(
+        const std::shared_ptr<ReplacementData>& replacement_data,
+        const PacketPtr pkt) const;
+    int qState(
+        double saturatedPct, double preserveVictimPct,
+        double preserveReusePerAdmission) const;
+    int qChooseAction(int state);
+    void qUpdate(
+        int nextState, double reward, double saturatedPct,
+        double preserveVictimPct, double preserveReusePerAdmission,
+        double admissionAcceptPct);
+    void qLogEpoch(
+        int state, int action, double reward, double saturatedPct,
+        double preserveVictimPct, double preserveReusePerAdmission,
+        double admissionAcceptPct);
+    void resetEpochCounters();
 };
 
 } // namespace replacement_policy

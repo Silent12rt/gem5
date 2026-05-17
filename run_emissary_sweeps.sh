@@ -4,13 +4,16 @@ set -euo pipefail
 GEM5_ROOT=${GEM5_ROOT:-/home/gem5}
 GEM5_BIN=${GEM5_BIN:-${GEM5_ROOT}/build/X86/gem5.opt}
 CONFIG=${CONFIG:-${GEM5_ROOT}/configs/deprecated/example/se.py}
-BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/emissary_effect_test}
+# BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/emissary_effect_test}
+BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/623/xalancbmk_s_base.mytest-m64}
+BENCH_OPTIONS="${BENCH_OPTIONS:--v benchmarks/623/test.xml benchmarks/623/xalanc.xsl}"
 TRACE_ROOT=${TRACE_ROOT:-${GEM5_ROOT}/Trace/emissary_sweeps}
 SUITE=${1:-all}
 
 COMMON_ARGS=(
     "${CONFIG}"
     --cmd="${BENCH}"
+    --options="${BENCH_OPTIONS}"
     --cpu-type=DerivO3CPU
     --caches --l2cache
     --l2_assoc=8
@@ -169,6 +172,30 @@ run_adaptive_suite() {
     done
 }
 
+run_q_learning_suite() {
+    rm -rf "${TRACE_ROOT}/q_learning"
+    run_baseline "q_learning/baseline_128kB" 128kB
+    run_emissary "q_learning/fixed_r_1_32_epoch_1M" 128kB 4 4 \
+        --hist_freq_cycles=1000000 \
+        --emissary-enable \
+        --emissary-require-iq-empty \
+        --emissary-sample-rate=3.125 \
+        --starveAtleast=1 --starveRandomness=100
+    for seed in 1 2 3; do
+        run_emissary "q_learning/q_conservative_seed_${seed}" 128kB 4 4 \
+            --hist_freq_cycles=1000000 \
+            --q-learning-preserve \
+            --q-learning-seed="${seed}" \
+            --q-learning-target-saturation=10 \
+            --q-learning-epsilon=0.03 \
+            --emissary-rng-seed="${seed}" \
+            --emissary-enable \
+            --emissary-require-iq-empty \
+            --emissary-sample-rate=12.5 \
+            --starveAtleast=1 --starveRandomness=100
+    done
+}
+
 case "${SUITE}" in
     epoch)
         run_epoch_suite
@@ -191,6 +218,9 @@ case "${SUITE}" in
     adaptive)
         run_adaptive_suite
         ;;
+    q-learning)
+        run_q_learning_suite
+        ;;
     validation)
         run_input_suite
         run_seed_suite
@@ -203,9 +233,10 @@ case "${SUITE}" in
         run_input_suite
         run_seed_suite
         run_adaptive_suite
+        run_q_learning_suite
         ;;
     *)
-        echo "usage: $0 [epoch|ablation|l2-size|preserve-ways|inputs|seeds|adaptive|validation|all]" >&2
+        echo "usage: $0 [epoch|ablation|l2-size|preserve-ways|inputs|seeds|adaptive|q-learning|validation|all]" >&2
         exit 2
         ;;
 esac

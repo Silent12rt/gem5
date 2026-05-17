@@ -22,6 +22,14 @@ metrics=(
     system.l2.replacement_policy.preserveFlushes
     system.l2.replacement_policy.adaptiveTightens
     system.l2.replacement_policy.adaptiveRelaxes
+    system.l2.replacement_policy.qLearningUpdates
+    system.l2.replacement_policy.qLearningExplores
+    system.l2.replacement_policy.qLearningExploits
+    system.l2.replacement_policy.qLearningActionSum
+    system.l2.replacement_policy.qAdmissionAccepts
+    system.l2.replacement_policy.qAdmissionRejects
+    system.l2.replacement_policy.qAdmissionGuardRejects
+    system.l2.replacement_policy.preserveHits
     system.cpu.icache.demandMisses::cpu.inst
     system.cpu.icache.ReadReq.accesses::cpu.inst
     system.l2.demandMisses::cpu.inst

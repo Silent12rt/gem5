@@ -2,6 +2,7 @@ MODULE.bazel.lock
 bazel-*
 build
 Trace
+benchmarks
 gem5_build
 parser.out
 parsetab.py

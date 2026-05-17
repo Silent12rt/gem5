@@ -407,7 +407,6 @@ Fetch::processCacheCompletion(PacketPtr pkt)
         pkt->req->getAccessDepth() > 0) {
         ++fetchStats.emissaryCandidates;
 
-<<<<<<< HEAD
         const bool issue_queue_empty = fromIEW->iewInfo[tid].iqCount == 0;
         if (emissaryRequireIQEmpty && !issue_queue_empty) {
             ++fetchStats.emissaryIQRejects;
@@ -444,19 +443,6 @@ Fetch::processCacheCompletion(PacketPtr pkt)
                 } else {
                     ++fetchStats.emissaryThresholdRejects;
                 }
-=======
-        PacketPtr mark_pkt = new Packet(mark_req, MemCmd::ReadReq);
-        mark_pkt->dataDynamic(new uint8_t[fetchBufferSize]);
-        mark_pkt->setStarved(true);
-
-        const double random =
-            static_cast<double>(rng->random<uint32_t>(0, 9999)) / 100.0;
-        const bool preserve = randomStarve ?
-            (random < starveRandomness) :
-	    (starveAtleast == 0 || pkt->starveCount + 1 >= starveAtleast);
-        mark_pkt->setPreserve(preserve);
->>>>>>> 87eecf0a7dbdb5aac8285c7b5de2ae439dafae58
-
                 if (!icachePort.sendTimingReq(mark_pkt)) {
                     delete mark_pkt;
                 }

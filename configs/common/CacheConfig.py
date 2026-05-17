@@ -161,6 +161,48 @@ def config_cache(options, system):
             system.l2.replacement_policy.adaptive_min_preserve_ways = max(
                 0, min(int(options.adaptive_min_preserve_ways), preserve_ways)
             )
+            system.l2.replacement_policy.q_learning_preserve = (
+                options.q_learning_preserve
+            )
+            system.l2.replacement_policy.q_learning_alpha = (
+                options.q_learning_alpha
+            )
+            system.l2.replacement_policy.q_learning_gamma = (
+                options.q_learning_gamma
+            )
+            system.l2.replacement_policy.q_learning_epsilon = (
+                options.q_learning_epsilon
+            )
+            system.l2.replacement_policy.q_learning_target_saturation = (
+                options.q_learning_target_saturation
+            )
+            system.l2.replacement_policy.q_learning_min_preserve_ways = max(
+                1, min(int(options.q_learning_min_preserve_ways), preserve_ways)
+            )
+            system.l2.replacement_policy.q_reward_non_preserve_victim = (
+                options.q_reward_non_preserve_victim
+            )
+            system.l2.replacement_policy.q_penalty_preserve_victim = (
+                options.q_penalty_preserve_victim
+            )
+            system.l2.replacement_policy.q_penalty_quota_exceeded = (
+                options.q_penalty_quota_exceeded
+            )
+            system.l2.replacement_policy.q_penalty_saturation = (
+                options.q_penalty_saturation
+            )
+            system.l2.replacement_policy.q_reward_preserve_hit = (
+                options.q_reward_preserve_hit
+            )
+            system.l2.replacement_policy.q_penalty_admitted_preserve = (
+                options.q_penalty_admitted_preserve
+            )
+            system.l2.replacement_policy.q_learning_set_guard = (
+                not options.q_learning_disable_set_guard
+            )
+            system.l2.replacement_policy.q_learning_seed = (
+                options.q_learning_seed
+            )
 
         system.tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
         system.l2.cpu_side = system.tol2bus.mem_side_ports
