@@ -1282,8 +1282,16 @@ Fetch::fetch(bool &status_change)
         if (decoupledFrontEnd) {
             DPRINTF(Fetch, "Fetch from %s. PC=%s\n", curFT->toString(),
                     this_pc);
+            if (!curFT->inRange(this_pc.instAddr())) {
+                DPRINTF(Fetch,
+                        "[tid:%i] PC:%s is outside current fetch target %s. "
+                        "Resteering BAC.\n",
+                        tid, this_pc, curFT->toString());
+                curFT = nullptr;
+                mispredict = true;
+                break;
+            }
         }
-        assert(!curFT || curFT->inRange(this_pc.instAddr()));
 
         // We need to process more memory if we aren't going to get a
         // StaticInst from the rom, the current macroop, or what's already

@@ -125,6 +125,28 @@ def get_processes(args):
         return multiprocesses, 1
 
 
+def create_fdip_branch_predictor(args):
+    class FDIPBTB(SimpleBTB):
+        numEntries = 16 * 1024
+        associativity = 8
+
+    bp = BranchPredictor(
+        btb=FDIPBTB(),
+        conditionalBranchPred=TAGE_SC_L_64KB(),
+        requiresBTBHit=True,
+        takenOnlyHistory=True,
+    )
+
+    isa = ObjectList.cpu_list.get_isa(args.cpu_type)
+    if isa == ISA.ARM:
+        bp.instShiftAmt = 2
+    elif isa == ISA.RISCV:
+        bp.instShiftAmt = 1
+    else:
+        bp.instShiftAmt = 0
+    return bp
+
+
 warn(
     "The se.py script is deprecated. It will be removed in future releases of "
     " gem5."
@@ -178,6 +200,9 @@ else:
 
 (CPUClass, test_mem_mode, FutureClass) = Simulation.setCPUClass(args)
 CPUClass.numThreads = numThreads
+
+if args.fdip and not ObjectList.is_o3_cpu(CPUClass):
+    fatal("--fdip requires an O3 CPU type")
 
 # Check -- do not allow SMT with multiple CPUs
 if args.smt and args.num_cpus > 1:
@@ -255,12 +280,26 @@ for i in range(np):
     if args.bp_type:
         bpClass = ObjectList.bp_list.get(args.bp_type)
         system.cpu[i].branchPred = bpClass()
+    elif args.fdip:
+        system.cpu[i].branchPred = create_fdip_branch_predictor(args)
 
     if args.indirect_bp_type:
         indirectBPClass = ObjectList.indirect_bp_list.get(
             args.indirect_bp_type
         )
         system.cpu[i].branchPred.indirectBranchPred = indirectBPClass()
+
+    if args.fdip:
+        system.cpu[i].decoupledFrontEnd = True
+        system.cpu[i].numFTQEntries = args.fdip_num_ftq_entries
+        system.cpu[i].fetchTargetWidth = args.fdip_fetch_target_width
+        isa = ObjectList.cpu_list.get_isa(args.cpu_type)
+        if isa == ISA.ARM:
+            system.cpu[i].minInstSize = 4
+        elif isa == ISA.RISCV:
+            system.cpu[i].minInstSize = 2
+        else:
+            system.cpu[i].minInstSize = 1
 
     if args.emissary_enable or args.emissary_retirement:
         system.cpu[i].enableStarvationEMISSARY = True

@@ -49,6 +49,9 @@
 
 #include "base/intmath.hh"
 #include "mem/cache/replacement_policies/lru_emissary_rp.hh"
+#include "mem/cache/replacement_policies/one_tree_lru_emissary_rp.hh"
+#include "mem/cache/replacement_policies/tlru_emissary_rp.hh"
+#include "mem/cache/replacement_policies/tree_lru_emissary_rp.hh"
 
 namespace gem5
 {
@@ -73,6 +76,31 @@ BaseSetAssoc::BaseSetAssoc(const Params &p)
         emissary->numWays = p.assoc;
         emissary->numSets = numBlocks / p.assoc;
     }
+
+    auto *tlru_emissary =
+        dynamic_cast<replacement_policy::TLRUEmissary*>(replacementPolicy);
+    if (tlru_emissary) {
+        tlru_emissary->indexingPolicy = indexingPolicy;
+        tlru_emissary->numWays = p.assoc;
+        tlru_emissary->numSets = numBlocks / p.assoc;
+    }
+
+    auto *tree_emissary =
+        dynamic_cast<replacement_policy::TreeLRUEmissary*>(replacementPolicy);
+    if (tree_emissary) {
+        tree_emissary->indexingPolicy = indexingPolicy;
+        tree_emissary->numWays = p.assoc;
+        tree_emissary->numSets = numBlocks / p.assoc;
+    }
+
+    auto *one_tree_emissary =
+        dynamic_cast<replacement_policy::OneTreeLRUEmissary*>(
+            replacementPolicy);
+    if (one_tree_emissary) {
+        one_tree_emissary->indexingPolicy = indexingPolicy;
+        one_tree_emissary->numWays = p.assoc;
+        one_tree_emissary->numSets = numBlocks / p.assoc;
+    }
 }
 
 void
@@ -82,6 +110,22 @@ BaseSetAssoc::tagsInit()
         dynamic_cast<replacement_policy::LRUEmissary*>(replacementPolicy);
     if (emissary) {
         emissary->indexingPolicy = indexingPolicy;
+    }
+    auto *tlru_emissary =
+        dynamic_cast<replacement_policy::TLRUEmissary*>(replacementPolicy);
+    if (tlru_emissary) {
+        tlru_emissary->indexingPolicy = indexingPolicy;
+    }
+    auto *tree_emissary =
+        dynamic_cast<replacement_policy::TreeLRUEmissary*>(replacementPolicy);
+    if (tree_emissary) {
+        tree_emissary->indexingPolicy = indexingPolicy;
+    }
+    auto *one_tree_emissary =
+        dynamic_cast<replacement_policy::OneTreeLRUEmissary*>(
+            replacementPolicy);
+    if (one_tree_emissary) {
+        one_tree_emissary->indexingPolicy = indexingPolicy;
     }
 
     // Initialize all blocks
@@ -98,6 +142,10 @@ BaseSetAssoc::tagsInit()
         // Associate a replacement data entry to the block
 	if (emissary) {
             blk->replacementData = emissary->instantiateEntry(blk);
+        } else if (tree_emissary) {
+            blk->replacementData = tree_emissary->instantiateEntry(blk);
+        } else if (one_tree_emissary) {
+            blk->replacementData = one_tree_emissary->instantiateEntry(blk);
         } else {
             blk->replacementData = replacementPolicy->instantiateEntry();
         }

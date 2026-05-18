@@ -185,6 +185,7 @@ def addNoISAOptions(parser):
     )
     parser.add_argument("--caches", action="store_true")
     parser.add_argument("--l2cache", action="store_true")
+    parser.add_argument("--l3cache", action="store_true")
     parser.add_argument("--num-dirs", type=int, default=1)
     parser.add_argument("--num-l2caches", type=int, default=1)
     parser.add_argument("--num-l3caches", type=int, default=1)
@@ -201,12 +202,24 @@ def addNoISAOptions(parser):
     parser.add_argument("--starveAtleast", type=int, default=0)
     parser.add_argument("--randomStarve", action="store_true", default=False)
     parser.add_argument(
+        "--fdip",
+        action="store_true",
+        default=False,
+        help="Enable fetch-directed instruction prefetching in SE mode",
+    )
+    parser.add_argument("--fdip-num-ftq-entries", type=int, default=8)
+    parser.add_argument("--fdip-fetch-target-width", type=int, default=64)
+    parser.add_argument("--fdip-pfq-size", type=int, default=64)
+    parser.add_argument("--fdip-tq-size", type=int, default=64)
+    parser.add_argument(
         "--emissary-require-iq-empty", action="store_true", default=False
     )
     parser.add_argument("--emissary-sample-rate", type=float, default=100.0)
     parser.add_argument("--emissary-enable", action="store_true", default=False)
     parser.add_argument("--emissary-retirement", action="store_true", default=False)
     parser.add_argument("--l2_rp", type=str, default="LRU")
+    parser.add_argument("--l3_rp", type=str, default="LRU")
+    parser.add_argument("--l3_rrpv_bits", type=int, default=2)
     parser.add_argument("--lru_ways", type=int, default=2)
     parser.add_argument("--preserve_ways", type=int, default=6)
     parser.add_argument("--hist_freq_cycles", type=int, default=0)

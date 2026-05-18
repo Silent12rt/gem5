@@ -44,7 +44,9 @@ from common import ObjectList
 from common.Caches import *
 
 import m5
+import sys
 from m5.objects import *
+from m5.util import fatal
 
 from gem5.isas import ISA
 
@@ -75,10 +77,82 @@ def _get_cache_opts(level, options):
     return opts
 
 
+def _attach_fdip_prefetcher(options, cpu, icache):
+    pf = FetchDirectedPrefetcher(
+        use_virtual_addresses=True,
+        cpu=cpu,
+        pfq_size=options.fdip_pfq_size,
+        tq_size=options.fdip_tq_size,
+    )
+    pf.registerCache(icache)
+    pf.registerMMU(cpu.mmu)
+    icache.prefetcher = pf
+
+
+def _make_l3_replacement_policy(options):
+    l3_rp = getattr(options, "l3_rp", "LRU")
+    rrpv_bits = int(getattr(options, "l3_rrpv_bits", 2))
+
+    if l3_rp in ("LRU", "LRURP"):
+        return LRURP()
+    if l3_rp in ("Random", "RandomRP"):
+        return RandomRP()
+    if l3_rp in ("TreePLRU", "TreePLRURP", "PLRU"):
+        return TreePLRURP()
+    if l3_rp in ("BIP", "BIPRP"):
+        rp = BIPRP()
+        rp.btp = 3
+        return rp
+    if l3_rp in ("LIP", "LIPRP"):
+        return LIPRP()
+    if l3_rp in ("BRRIP", "BRRIPRP"):
+        rp = BRRIPRP()
+        rp.num_bits = rrpv_bits
+        rp.btp = 3
+        return rp
+    if l3_rp in ("RRIP", "RRIPRP"):
+        rp = RRIPRP()
+        rp.num_bits = rrpv_bits
+        rp.hit_priority = True
+        return rp
+    if l3_rp in ("DRRIP", "DRRIPRP"):
+        rp = DRRIPRP()
+        rp.team_size = 16
+        rp.constituency_size = 512
+        rp.replacement_policy_a.num_bits = rrpv_bits
+        rp.replacement_policy_b.num_bits = rrpv_bits
+        rp.replacement_policy_a.hit_priority = True
+        rp.replacement_policy_b.hit_priority = True
+        return rp
+    if l3_rp in ("SHiPMem", "SHiPMemRP"):
+        rp = SHiPMemRP()
+        rp.num_bits = rrpv_bits
+        return rp
+    if l3_rp in ("SHiPPC", "SHiPPCRP"):
+        rp = SHiPPCRP()
+        rp.num_bits = rrpv_bits
+        return rp
+
+    fatal(f"Unsupported --l3_rp '{l3_rp}'")
+
+
 def config_cache(options, system):
-    if options.external_memory_system and (options.caches or options.l2cache):
+    if options.external_memory_system and (
+        options.caches or options.l2cache or getattr(options, "l3cache", False)
+    ):
         print("External caches and internal caches are exclusive options.\n")
         sys.exit(1)
+
+    if getattr(options, "fdip", False) and not options.caches:
+        fatal("--fdip requires --caches so the L1I prefetcher can be attached")
+
+    if getattr(options, "l3cache", False) and not options.l2cache:
+        fatal("--l3cache requires --l2cache")
+    if (
+        getattr(options, "l3cache", False)
+        and getattr(options, "num_l3caches", 1) != 1
+    ):
+        fatal("Classic SE --l3cache currently supports --num-l3caches=1")
 
     if options.external_memory_system:
         ExternalCache = ExternalCacheFactory(options.external_memory_system)
@@ -124,8 +198,10 @@ def config_cache(options, system):
     # minimal so that compute delays do not include memory access latencies.
     # Configure the compulsory L1 caches for the O3CPU, do not configure
     # any more caches.
-    if options.l2cache and options.elastic_trace_en:
-        fatal("When elastic trace is enabled, do not configure L2 caches.")
+    if (
+        options.l2cache or getattr(options, "l3cache", False)
+    ) and options.elastic_trace_en:
+        fatal("When elastic trace is enabled, do not configure L2/L3 caches.")
 
     if options.l2cache:
         # Provide a clock for the L2 and the L1-to-L2 bus here as they
@@ -134,12 +210,20 @@ def config_cache(options, system):
         system.l2 = l2_cache_class(
             clk_domain=system.cpu_clk_domain, **_get_cache_opts("l2", options)
         )
-        
-        if hasattr(options, "l2_rp") and options.l2_rp in [
-            "LRUEmissary",
-            "LRUEmissaryRP",
-        ]:
-            system.l2.replacement_policy = LRUEmissaryRP()
+        emissary_rps = {
+            "LRUEmissary": LRUEmissaryRP,
+            "LRUEmissaryRP": LRUEmissaryRP,
+            "TLRUEmissary": TLRUEmissaryRP,
+            "TLRUEmissaryRP": TLRUEmissaryRP,
+            "TreeLRUEmissary": TreeLRUEmissaryRP,
+            "TreeLRUEmissaryRP": TreeLRUEmissaryRP,
+            "OneTreeLRUEmissary": OneTreeLRUEmissaryRP,
+            "OneTreeLRUEmissaryRP": OneTreeLRUEmissaryRP,
+        }
+        l2_rp = getattr(options, "l2_rp", "LRU")
+        if l2_rp in emissary_rps:
+            rp_class = emissary_rps[l2_rp]
+            system.l2.replacement_policy = rp_class()
             assoc = int(system.l2.assoc)
             preserve_ways = max(0, min(int(options.preserve_ways), assoc))
             lru_ways = assoc - preserve_ways
@@ -152,61 +236,76 @@ def config_cache(options, system):
                 system.l2.replacement_policy.flush_freq_in_cycles = (
                     options.hist_freq_cycles
                 )
-            system.l2.replacement_policy.adaptive_preserve = (
-                options.adaptive_preserve
-            )
-            system.l2.replacement_policy.adaptive_target_saturation = (
-                options.adaptive_target_saturation
-            )
-            system.l2.replacement_policy.adaptive_min_preserve_ways = max(
-                0, min(int(options.adaptive_min_preserve_ways), preserve_ways)
-            )
-            system.l2.replacement_policy.q_learning_preserve = (
-                options.q_learning_preserve
-            )
-            system.l2.replacement_policy.q_learning_alpha = (
-                options.q_learning_alpha
-            )
-            system.l2.replacement_policy.q_learning_gamma = (
-                options.q_learning_gamma
-            )
-            system.l2.replacement_policy.q_learning_epsilon = (
-                options.q_learning_epsilon
-            )
-            system.l2.replacement_policy.q_learning_target_saturation = (
-                options.q_learning_target_saturation
-            )
-            system.l2.replacement_policy.q_learning_min_preserve_ways = max(
-                1, min(int(options.q_learning_min_preserve_ways), preserve_ways)
-            )
-            system.l2.replacement_policy.q_reward_non_preserve_victim = (
-                options.q_reward_non_preserve_victim
-            )
-            system.l2.replacement_policy.q_penalty_preserve_victim = (
-                options.q_penalty_preserve_victim
-            )
-            system.l2.replacement_policy.q_penalty_quota_exceeded = (
-                options.q_penalty_quota_exceeded
-            )
-            system.l2.replacement_policy.q_penalty_saturation = (
-                options.q_penalty_saturation
-            )
-            system.l2.replacement_policy.q_reward_preserve_hit = (
-                options.q_reward_preserve_hit
-            )
-            system.l2.replacement_policy.q_penalty_admitted_preserve = (
-                options.q_penalty_admitted_preserve
-            )
-            system.l2.replacement_policy.q_learning_set_guard = (
-                not options.q_learning_disable_set_guard
-            )
-            system.l2.replacement_policy.q_learning_seed = (
-                options.q_learning_seed
-            )
+            if rp_class is LRUEmissaryRP:
+                system.l2.replacement_policy.adaptive_preserve = (
+                    options.adaptive_preserve
+                )
+                system.l2.replacement_policy.adaptive_target_saturation = (
+                    options.adaptive_target_saturation
+                )
+                system.l2.replacement_policy.adaptive_min_preserve_ways = max(
+                    0, min(int(options.adaptive_min_preserve_ways), preserve_ways)
+                )
+                system.l2.replacement_policy.q_learning_preserve = (
+                    options.q_learning_preserve
+                )
+                system.l2.replacement_policy.q_learning_alpha = (
+                    options.q_learning_alpha
+                )
+                system.l2.replacement_policy.q_learning_gamma = (
+                    options.q_learning_gamma
+                )
+                system.l2.replacement_policy.q_learning_epsilon = (
+                    options.q_learning_epsilon
+                )
+                system.l2.replacement_policy.q_learning_target_saturation = (
+                    options.q_learning_target_saturation
+                )
+                system.l2.replacement_policy.q_learning_min_preserve_ways = max(
+                    1,
+                    min(int(options.q_learning_min_preserve_ways), preserve_ways),
+                )
+                system.l2.replacement_policy.q_reward_non_preserve_victim = (
+                    options.q_reward_non_preserve_victim
+                )
+                system.l2.replacement_policy.q_penalty_preserve_victim = (
+                    options.q_penalty_preserve_victim
+                )
+                system.l2.replacement_policy.q_penalty_quota_exceeded = (
+                    options.q_penalty_quota_exceeded
+                )
+                system.l2.replacement_policy.q_penalty_saturation = (
+                    options.q_penalty_saturation
+                )
+                system.l2.replacement_policy.q_reward_preserve_hit = (
+                    options.q_reward_preserve_hit
+                )
+                system.l2.replacement_policy.q_penalty_admitted_preserve = (
+                    options.q_penalty_admitted_preserve
+                )
+                system.l2.replacement_policy.q_learning_set_guard = (
+                    not options.q_learning_disable_set_guard
+                )
+                system.l2.replacement_policy.q_learning_seed = (
+                    options.q_learning_seed
+                )
 
         system.tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
         system.l2.cpu_side = system.tol2bus.mem_side_ports
-        system.l2.mem_side = system.membus.cpu_side_ports
+
+        if getattr(options, "l3cache", False):
+            system.l2.writeback_clean = True
+            system.l3 = L3Cache(
+                clk_domain=system.cpu_clk_domain, **_get_cache_opts("l3", options)
+            )
+            system.l3.replacement_policy = _make_l3_replacement_policy(options)
+
+            system.tol3bus = L2XBar(clk_domain=system.cpu_clk_domain)
+            system.l2.mem_side = system.tol3bus.cpu_side_ports
+            system.l3.cpu_side = system.tol3bus.mem_side_ports
+            system.l3.mem_side = system.membus.cpu_side_ports
+        else:
+            system.l2.mem_side = system.membus.cpu_side_ports
 
     if options.memchecker:
         system.memchecker = MemChecker()
@@ -215,6 +314,8 @@ def config_cache(options, system):
         if options.caches:
             icache = icache_class(**_get_cache_opts("l1i", options))
             dcache = dcache_class(**_get_cache_opts("l1d", options))
+            if getattr(options, "fdip", False):
+                _attach_fdip_prefetcher(options, system.cpu[i], icache)
 
             # If we are using ISA.X86 or ISA.RISCV, we set walker caches.
             if ObjectList.cpu_list.get_isa(options.cpu_type) in [

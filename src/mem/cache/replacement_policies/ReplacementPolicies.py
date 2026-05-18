@@ -132,6 +132,48 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_seed = Param.Unsigned(0, "Non-zero seed for Q-learning")
 
+
+class TLRUEmissaryRP(BaseReplacementPolicy):
+    type = "TLRUEmissaryRP"
+    cxx_class = "gem5::replacement_policy::TLRUEmissary"
+    cxx_header = "mem/cache/replacement_policies/tlru_emissary_rp.hh"
+    lru_ways = Param.Int(Parent.lru_ways, "Number of ways allocated to LRU")
+    preserve_ways = Param.Int(
+        Parent.preserve_ways, "Number of ways allocated to preserve mode"
+    )
+    flush_freq_in_cycles = Param.Unsigned(
+        0, "Frequency in cycles to flush preserve usage counters"
+    )
+
+
+class TreeLRUEmissaryRP(BaseReplacementPolicy):
+    type = "TreeLRUEmissaryRP"
+    cxx_class = "gem5::replacement_policy::TreeLRUEmissary"
+    cxx_header = "mem/cache/replacement_policies/tree_lru_emissary_rp.hh"
+    lru_ways = Param.Int(Parent.lru_ways, "Number of ways allocated to LRU")
+    preserve_ways = Param.Int(
+        Parent.preserve_ways, "Number of ways allocated to preserve mode"
+    )
+    flush_freq_in_cycles = Param.Unsigned(
+        0, "Frequency in cycles to flush preserve usage counters"
+    )
+    num_leaves = Param.Int(Parent.assoc, "Number of leaves in each PLRU tree")
+
+
+class OneTreeLRUEmissaryRP(BaseReplacementPolicy):
+    type = "OneTreeLRUEmissaryRP"
+    cxx_class = "gem5::replacement_policy::OneTreeLRUEmissary"
+    cxx_header = "mem/cache/replacement_policies/one_tree_lru_emissary_rp.hh"
+    lru_ways = Param.Int(Parent.lru_ways, "Number of ways allocated to LRU")
+    preserve_ways = Param.Int(
+        Parent.preserve_ways, "Number of ways allocated to preserve mode"
+    )
+    flush_freq_in_cycles = Param.Unsigned(
+        0, "Frequency in cycles to flush preserve usage counters"
+    )
+    num_leaves = Param.Int(Parent.assoc, "Number of leaves in each PLRU tree")
+
+
 class BIPRP(LRURP):
     type = "BIPRP"
     cxx_class = "gem5::replacement_policy::BIP"
