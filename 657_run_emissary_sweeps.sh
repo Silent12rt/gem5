@@ -5,9 +5,9 @@ GEM5_ROOT=${GEM5_ROOT:-/home/gem5}
 GEM5_BIN=${GEM5_BIN:-${GEM5_ROOT}/build/X86/gem5.opt}
 CONFIG=${CONFIG:-${GEM5_ROOT}/configs/deprecated/example/se.py}
 # BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/emissary_effect_test}
-BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/623/xalancbmk_s_base.mytest-m64}
-BENCH_OPTIONS="${BENCH_OPTIONS:--v benchmarks/623/test.xml benchmarks/623/xalanc.xsl}"
-TRACE_ROOT=${TRACE_ROOT:-${GEM5_ROOT}/Trace/emissary_sweeps}
+BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/657/xz_s_base.mytest-m64}
+BENCH_OPTIONS="${BENCH_OPTIONS:-benchmarks/657/cpu2006docs.tar.xz 4 055ce243071129412e9dd0b3b69a21654033a9b723d874b2015c774fac1553d9713be561ca86f74e4f16f22e664fc17a79f30caa5ad2c04fbc447549c2810fae 1548636 1555348 0}"
+TRACE_ROOT=${TRACE_ROOT:-${GEM5_ROOT}/Trace/657_emissary_sweeps}
 SUITE=${1:-all}
 
 COMMON_ARGS=(

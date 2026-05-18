@@ -5,9 +5,9 @@ GEM5_ROOT=${GEM5_ROOT:-/home/gem5}
 GEM5_BIN=${GEM5_BIN:-${GEM5_ROOT}/build/X86/gem5.opt}
 CONFIG=${CONFIG:-${GEM5_ROOT}/configs/deprecated/example/se.py}
 # BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/emissary_effect_test}
-BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/623/xalancbmk_s_base.mytest-m64}
-BENCH_OPTIONS="${BENCH_OPTIONS:--v benchmarks/623/test.xml benchmarks/623/xalanc.xsl}"
-TRACE_ROOT=${TRACE_ROOT:-${GEM5_ROOT}/Trace/emissary_sweeps}
+BENCH=${BENCH:-${GEM5_ROOT}/benchmarks/602/sgcc_base.mytest-m64}
+BENCH_OPTIONS="${BENCH_OPTIONS:-benchmarks/602/t1.c -O3 -finline-limit=50000 -o benchmarks/602/t1.opts-O3_-finline-limit_50000.s}"
+TRACE_ROOT=${TRACE_ROOT:-${GEM5_ROOT}/Trace/602_emissary_sweeps}
 SUITE=${1:-all}
 
 COMMON_ARGS=(
