@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+GEM5_ROOT=${GEM5_ROOT:-${SCRIPT_DIR}}
+RUNNER=${RUNNER:-${GEM5_ROOT}/run_emissary_repro_rl.sh}
+
+usage() {
+    cat >&2 <<'EOF'
+usage:
+  bash run_spec2017.sh [baseline|paper|rl|all] <spec_id>
+  bash run_spec2017.sh list
+
+examples:
+  bash run_spec2017.sh baseline 605
+  bash run_spec2017.sh paper 623
+  bash run_spec2017.sh rl 620
+  bash run_spec2017.sh all 657
+
+supported spec_id:
+  602 605 620 623 631 641 657 600 648 625
+EOF
+}
+
+list_specs() {
+    cat <<'EOF'
+602  sgcc       benchmarks/602/sgcc_base.mytest-m64
+605  mcf        benchmarks/605/mcf_s_base.mytest-m64
+620  omnetpp    benchmarks/620/omnetpp_s_base.mytest-m64
+623  xalancbmk  benchmarks/623/xalancbmk_s_base.mytest-m64
+631  deepsjeng  benchmarks/631/deepsjeng_s_base.mytest-m64
+641  leela      benchmarks/641/leela_s_base.mytest-m64
+657  xz         benchmarks/657/xz_s_base.mytest-m64
+600  perlbench  benchmarks/600/perlbench_s_base.mytest-m64
+648  exchange2  benchmarks/648/exchange2_s_base.mytest-m64
+625  x264       benchmarks/625/x264_s_base.mytest-m64
+EOF
+}
+
+if [[ "${1:-}" == "list" ]]; then
+    list_specs
+    exit 0
+fi
+
+SUITE=${1:-}
+SPEC_ID=${2:-}
+
+case "${SUITE}" in
+    baseline|paper|rl|all)
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac
+
+case "${SPEC_ID}" in
+    602)
+        run_dir="${GEM5_ROOT}"
+        bench_rel="benchmarks/602/sgcc_base.mytest-m64"
+        bench_options="benchmarks/602/t1.c -O3 -finline-limit=50000 -o benchmarks/602/t1.opts-O3_-finline-limit_50000.s"
+        ;;
+    605)
+        run_dir="${GEM5_ROOT}"
+        bench_rel="benchmarks/605/mcf_s_base.mytest-m64"
+        bench_options="benchmarks/605/inp.in"
+        ;;
+    620)
+        run_dir="${GEM5_ROOT}/benchmarks/620"
+        bench_rel="benchmarks/620/omnetpp_s_base.mytest-m64"
+        bench_options="-c General -r 0"
+        ;;
+    623)
+        run_dir="${GEM5_ROOT}"
+        bench_rel="benchmarks/623/xalancbmk_s_base.mytest-m64"
+        bench_options="-v benchmarks/623/test.xml benchmarks/623/xalanc.xsl"
+        ;;
+    631)
+        run_dir="${GEM5_ROOT}"
+        bench_rel="benchmarks/631/deepsjeng_s_base.mytest-m64"
+        bench_options="benchmarks/631/test.txt"
+        ;;
+    641)
+        run_dir="${GEM5_ROOT}"
+        bench_rel="benchmarks/641/leela_s_base.mytest-m64"
+        bench_options="benchmarks/641/test.sgf"
+        ;;
+    657)
+        run_dir="${GEM5_ROOT}"
+        bench_rel="benchmarks/657/xz_s_base.mytest-m64"
+        bench_options="benchmarks/657/cpu2006docs.tar.xz 4 055ce243071129412e9dd0b3b69a21654033a9b723d874b2015c774fac1553d9713be561ca86f74e4f16f22e664fc17a79f30caa5ad2c04fbc447549c2810fae 1548636 1555348 0"
+        ;;
+    600)
+        run_dir="${GEM5_ROOT}/benchmarks/600"
+        bench_rel="benchmarks/600/perlbench_s_base.mytest-m64"
+        bench_options="-I. -I./lib test.pl"
+        ;;
+    648)
+        run_dir="${GEM5_ROOT}/benchmarks/648"
+        bench_rel="benchmarks/648/exchange2_s_base.mytest-m64"
+        bench_options="0"
+        ;;
+    625)
+        run_dir="${GEM5_ROOT}"
+        bench_rel="benchmarks/625/x264_s_base.mytest-m64"
+        bench_options="--dumpyuv 50 --frames 156 -o benchmarks/625/BuckBunny_New.264 benchmarks/625/BuckBunny.yuv 1280x720"
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac
+
+# Common experiment knobs. Edit defaults here, or override them on the
+# command line, for example: RL_EPSILON=0.08 bash run_spec2017.sh rl 620
+export GEM5_ROOT
+export GEM5_BIN="${GEM5_BIN:-${GEM5_ROOT}/build/X86/gem5.opt}"
+export CONFIG="${CONFIG:-${GEM5_ROOT}/configs/deprecated/example/se.py}"
+
+export CPU_TYPE="${CPU_TYPE:-DerivO3CPU}"
+export CACHELINE_SIZE="${CACHELINE_SIZE:-64}"
+export MEM_SIZE="${MEM_SIZE:-8GiB}"
+
+export L1I_SIZE="${L1I_SIZE:-32768B}"
+export L1D_SIZE="${L1D_SIZE:-65536B}"
+export L1I_ASSOC="${L1I_ASSOC:-8}"
+export L1D_ASSOC="${L1D_ASSOC:-8}"
+
+export L2_SIZE="${L2_SIZE:-1048576B}"
+export L2_ASSOC="${L2_ASSOC:-16}"
+export L2_LRU_WAYS="${L2_LRU_WAYS:-10}"
+export L2_PRESERVE_WAYS="${L2_PRESERVE_WAYS:-6}"
+
+export USE_L3="${USE_L3:-1}"
+export L3_SIZE="${L3_SIZE:-2097152B}"
+export L3_ASSOC="${L3_ASSOC:-16}"
+export L3_RP="${L3_RP:-LRU}"
+export L3_RRPV_BITS="${L3_RRPV_BITS:-2}"
+
+export USE_FDIP="${USE_FDIP:-0}"
+export FDIP_NUM_FTQ_ENTRIES="${FDIP_NUM_FTQ_ENTRIES:-8}"
+export FDIP_FETCH_TARGET_WIDTH="${FDIP_FETCH_TARGET_WIDTH:-64}"
+export FDIP_PFQ_SIZE="${FDIP_PFQ_SIZE:-64}"
+export FDIP_TQ_SIZE="${FDIP_TQ_SIZE:-64}"
+export BP_TYPE="${BP_TYPE:-}"
+export MAXINSTS="${MAXINSTS-1000000000}"
+
+export PAPER_EPOCH="${PAPER_EPOCH:-500000}"
+export PAPER_SAMPLE_RATE="${PAPER_SAMPLE_RATE:-3.125}"
+export PAPER_STARVE_ATLEAST="${PAPER_STARVE_ATLEAST:-1}"
+export PAPER_STARVE_RANDOMNESS="${PAPER_STARVE_RANDOMNESS:-100}"
+
+export RL_SEEDS="${RL_SEEDS:-1 2 3}"
+export RL_SAMPLE_RATE="${RL_SAMPLE_RATE:-12.5}"
+export RL_TARGET_SATURATION="${RL_TARGET_SATURATION:-15}"
+export RL_EPSILON="${RL_EPSILON:-0.03}"
+export RL_ALPHA="${RL_ALPHA:-0.15}"
+export RL_GAMMA="${RL_GAMMA:-0.8}"
+export RL_MIN_PRESERVE_WAYS="${RL_MIN_PRESERVE_WAYS:-3}"
+
+if [[ ! -f "${RUNNER}" ]]; then
+    echo "runner not found: ${RUNNER}" >&2
+    exit 1
+fi
+
+export BENCH="${BENCH:-${GEM5_ROOT}/${bench_rel}}"
+export BENCH_OPTIONS="${BENCH_OPTIONS:-${bench_options}}"
+export TRACE_ROOT="${TRACE_ROOT:-${GEM5_ROOT}/Trace/${SPEC_ID}_emissary_repro_rl}"
+export RUN_DIR="${RUN_DIR:-${run_dir}}"
+
+echo "SPEC ${SPEC_ID}, suite ${SUITE}"
+echo "  BENCH: ${BENCH}"
+echo "  BENCH_OPTIONS: ${BENCH_OPTIONS}"
+echo "  TRACE_ROOT: ${TRACE_ROOT}"
+echo "  RUN_DIR: ${RUN_DIR}"
+echo "  L2: ${L2_SIZE}, assoc ${L2_ASSOC}, preserve ${L2_PRESERVE_WAYS}/${L2_ASSOC}"
+echo "  L3: USE_L3=${USE_L3}, ${L3_SIZE}, assoc ${L3_ASSOC}, rp ${L3_RP}"
+echo "  FDIP: USE_FDIP=${USE_FDIP}"
+if [[ -n "${MAXINSTS}" ]]; then
+    echo "  MAXINSTS: ${MAXINSTS}"
+fi
+
+cd "${RUN_DIR}"
+exec bash "${RUNNER}" "${SUITE}"
+
