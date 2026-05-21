@@ -64,6 +64,12 @@ class LRUEmissary : public Base
         {}
     };
 
+    struct QAction
+    {
+        double admissionRate;
+        int preserveWays;
+    };
+
   public:
     using Params = LRUEmissaryRPParams;
 
@@ -99,7 +105,7 @@ class LRUEmissary : public Base
     bool q_has_last;
     bool q_log_header_written;
     std::vector<double> q_values;
-    std::vector<double> q_admission_rates;
+    std::vector<QAction> q_actions;
     Random::RandomPtr q_rng;
     mutable uint64_t epoch_preserve_hits;
     mutable uint64_t epoch_admission_accepts;
@@ -124,6 +130,7 @@ class LRUEmissary : public Base
         statistics::Scalar qLearningExplores;
         statistics::Scalar qLearningExploits;
         statistics::Scalar qLearningActionSum;
+        statistics::Scalar qLearningPreserveWaySum;
         statistics::Scalar qAdmissionAccepts;
         statistics::Scalar qAdmissionRejects;
         statistics::Scalar qAdmissionGuardRejects;
@@ -160,6 +167,7 @@ class LRUEmissary : public Base
     void checkLRU(const std::shared_ptr<ReplacementData>& replacement_data) const;
     void resetAll(const ReplacementCandidates& candidates, bool preservedWays) const;
     double qActionToAdmissionRate(int action) const;
+    int qActionToPreserveWays(int action) const;
     int countSetPreserves(CacheBlk *blk) const;
     void qApplyAdmission(
         const std::shared_ptr<ReplacementData>& replacement_data,

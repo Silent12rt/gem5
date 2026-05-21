@@ -20,8 +20,8 @@ L1D_ASSOC=${L1D_ASSOC:-8}
 
 L2_SIZE=${L2_SIZE:-1048576B}
 L2_ASSOC=${L2_ASSOC:-16}
-L2_LRU_WAYS=${L2_LRU_WAYS:-4}
-L2_PRESERVE_WAYS=${L2_PRESERVE_WAYS:-4}
+L2_LRU_WAYS=${L2_LRU_WAYS:-0}
+L2_PRESERVE_WAYS=${L2_PRESERVE_WAYS:-10}
 
 USE_L3=${USE_L3:-1}
 L3_SIZE=${L3_SIZE:-2097152B}
@@ -49,6 +49,12 @@ RL_EPSILON=${RL_EPSILON:-0.03}
 RL_ALPHA=${RL_ALPHA:-0.2}
 RL_GAMMA=${RL_GAMMA:-0.8}
 RL_MIN_PRESERVE_WAYS=${RL_MIN_PRESERVE_WAYS:-1}
+RL_Q_REWARD_NON_PRESERVE_VICTIM=${RL_Q_REWARD_NON_PRESERVE_VICTIM:-0.25}
+RL_Q_PENALTY_PRESERVE_VICTIM=${RL_Q_PENALTY_PRESERVE_VICTIM:-6.0}
+RL_Q_PENALTY_QUOTA_EXCEEDED=${RL_Q_PENALTY_QUOTA_EXCEEDED:-4.0}
+RL_Q_PENALTY_SATURATION=${RL_Q_PENALTY_SATURATION:-150.0}
+RL_Q_REWARD_PRESERVE_HIT=${RL_Q_REWARD_PRESERVE_HIT:-1.0}
+RL_Q_PENALTY_ADMITTED_PRESERVE=${RL_Q_PENALTY_ADMITTED_PRESERVE:-0.2}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -168,6 +174,12 @@ run_rl_suite() {
             --q-learning-epsilon="${RL_EPSILON}" \
             --q-learning-target-saturation="${RL_TARGET_SATURATION}" \
             --q-learning-min-preserve-ways="${RL_MIN_PRESERVE_WAYS}" \
+            --q-reward-non-preserve-victim="${RL_Q_REWARD_NON_PRESERVE_VICTIM}" \
+            --q-penalty-preserve-victim="${RL_Q_PENALTY_PRESERVE_VICTIM}" \
+            --q-penalty-quota-exceeded="${RL_Q_PENALTY_QUOTA_EXCEEDED}" \
+            --q-penalty-saturation="${RL_Q_PENALTY_SATURATION}" \
+            --q-reward-preserve-hit="${RL_Q_REWARD_PRESERVE_HIT}" \
+            --q-penalty-admitted-preserve="${RL_Q_PENALTY_ADMITTED_PRESERVE}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \
             --emissary-require-iq-empty \
@@ -201,4 +213,3 @@ case "${SUITE}" in
         exit 2
         ;;
 esac
-

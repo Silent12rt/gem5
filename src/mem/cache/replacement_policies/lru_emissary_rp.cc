@@ -101,14 +101,19 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_learning_min_preserve_ways < 1) {
         q_learning_min_preserve_ways = 1;
     }
-    q_admission_rates = {1.5625, 3.125, 6.25, 12.5};
-    q_num_actions = static_cast<int>(q_admission_rates.size());
+    q_actions = {
+        {12.5, 8},
+        {25.0, 10},
+        {50.0, 10},
+        {75.0, 10},
+    };
+    q_num_actions = static_cast<int>(q_actions.size());
     q_values.assign(q_num_states * q_num_actions, 0.0);
     if (q_learning_preserve) {
         q_last_state = qState(0.0, 0.0, 0.0);
-        q_last_action = 1;
+        q_last_action = 2;
         q_has_last = true;
-        effective_preserve_ways = preserve_ways;
+        effective_preserve_ways = qActionToPreserveWays(q_last_action);
     }
     registerExitCallback([this]() { dumpPreserveHist(); });
 }
@@ -319,7 +324,6 @@ LRUEmissary::dumpPreserveHist()
     }
 
     int saturatedSets = 0;
-    int fullSaturatedSets = 0;
     for (int set = 0; set < numSets; set++) {
         int numPreserved = 0;
         for (int way = 0; way < numWays; way++) {
@@ -343,9 +347,6 @@ LRUEmissary::dumpPreserveHist()
             epoch_quota_exceeded_sets++;
         }
         if (numPreserved >= preserve_ways) {
-            fullSaturatedSets++;
-        }
-        if (numPreserved >= preserve_ways) {
             preserveCountHist[preserve_ways]++;
         } else {
             preserveCountHist[numPreserved]++;
@@ -357,7 +358,7 @@ LRUEmissary::dumpPreserveHist()
     }
     histOut << "\n";
 
-    const double fullSaturatedPct = 100.0 * fullSaturatedSets / numSets;
+    const double saturatedPct = 100.0 * saturatedSets / numSets;
     const uint64_t victimTotal =
         epoch_preserve_victims + epoch_non_preserve_victims;
     const double preserveVictimPct = victimTotal ?
@@ -387,18 +388,17 @@ LRUEmissary::dumpPreserveHist()
             q_penalty_quota_exceeded *
                 static_cast<double>(epoch_quota_exceeded_sets) -
             q_penalty_saturation *
-                std::max(0.0, fullSaturatedPct - q_learning_target_saturation);
+                std::max(0.0, saturatedPct - q_learning_target_saturation);
         const int nextState =
-            qState(fullSaturatedPct, preserveVictimPct,
+            qState(saturatedPct, preserveVictimPct,
                 preserveReusePerAdmission);
         qUpdate(
-            nextState, reward, fullSaturatedPct, preserveVictimPct,
+            nextState, reward, saturatedPct, preserveVictimPct,
             preserveReusePerAdmission, admissionAcceptPct);
         resetEpochCounters();
     }
 
     if (adaptive_preserve && !q_learning_preserve && numSets > 0) {
-        const double saturatedPct = 100.0 * saturatedSets / numSets;
         if (saturatedPct > adaptive_target_saturation &&
             effective_preserve_ways > adaptive_min_preserve_ways) {
             effective_preserve_ways--;
@@ -414,12 +414,29 @@ LRUEmissary::dumpPreserveHist()
 double
 LRUEmissary::qActionToAdmissionRate(int action) const
 {
-    if (q_admission_rates.empty()) {
+    if (q_actions.empty()) {
         return 100.0;
     }
     action = std::max(0, std::min(action,
-        static_cast<int>(q_admission_rates.size()) - 1));
-    return q_admission_rates[action];
+        static_cast<int>(q_actions.size()) - 1));
+    return q_actions[action].admissionRate;
+}
+
+int
+LRUEmissary::qActionToPreserveWays(int action) const
+{
+    if (preserve_ways <= 0) {
+        return 0;
+    }
+    if (q_actions.empty()) {
+        return preserve_ways;
+    }
+    action = std::max(0, std::min(action,
+        static_cast<int>(q_actions.size()) - 1));
+    const int minWays = std::max(1,
+        std::min(q_learning_min_preserve_ways, preserve_ways));
+    return std::max(minWays,
+        std::min(q_actions[action].preserveWays, preserve_ways));
 }
 
 int
@@ -457,7 +474,7 @@ LRUEmissary::qApplyAdmission(
     }
 
     if (q_learning_set_guard && repl_data->blk &&
-        countSetPreserves(repl_data->blk) >= preserve_ways) {
+        countSetPreserves(repl_data->blk) >= effective_preserve_ways) {
         pkt->setPreserve(false);
         stats.qAdmissionRejects++;
         stats.qAdmissionGuardRejects++;
@@ -504,7 +521,7 @@ LRUEmissary::qChooseAction(int state)
     }
 
     stats.qLearningExploits++;
-    int bestAction = std::min(1, q_num_actions - 1);
+    int bestAction = std::min(2, q_num_actions - 1);
     double bestValue = q_values[state * q_num_actions + bestAction];
     for (int action = 0; action < q_num_actions; action++) {
         const double value = q_values[state * q_num_actions + action];
@@ -536,15 +553,17 @@ LRUEmissary::qUpdate(
     }
 
     const int nextAction = qChooseAction(nextState);
+    const int nextPreserveWays = qActionToPreserveWays(nextAction);
     qLogEpoch(
         nextState, nextAction, reward, saturatedPct, preserveVictimPct,
         preserveReusePerAdmission, admissionAcceptPct);
     q_last_state = nextState;
     q_last_action = nextAction;
     q_has_last = true;
-    effective_preserve_ways = preserve_ways;
+    effective_preserve_ways = nextPreserveWays;
     stats.qLearningActionSum +=
         static_cast<uint64_t>(qActionToAdmissionRate(nextAction) * 1000.0);
+    stats.qLearningPreserveWaySum += nextPreserveWays;
 }
 
 void
@@ -556,7 +575,8 @@ LRUEmissary::qLogEpoch(
     std::ofstream qOut;
     qOut.open(simout.directory() + "/q_learning.csv", std::fstream::app);
     if (!q_log_header_written) {
-        qOut << "tick,state,action,admission_rate,reward,"
+        qOut << "tick,state,action,admission_rate,effective_preserve_ways,"
+             << "reward,"
              << "saturated_pct,preserve_victim_pct,preserve_victims,"
              << "non_preserve_victims,preserve_hits,admission_accepts,"
              << "admission_rejects,admission_accept_pct,"
@@ -564,7 +584,8 @@ LRUEmissary::qLogEpoch(
         q_log_header_written = true;
     }
     qOut << curTick() << "," << state << "," << action << ","
-         << qActionToAdmissionRate(action) << "," << reward << ","
+         << qActionToAdmissionRate(action) << ","
+         << qActionToPreserveWays(action) << "," << reward << ","
          << saturatedPct << "," << preserveVictimPct << ","
          << epoch_preserve_victims << "," << epoch_non_preserve_victims
          << "," << epoch_preserve_hits << "," << epoch_admission_accepts
@@ -608,6 +629,8 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of Q-learning greedy actions"),
     ADD_STAT(qLearningActionSum, statistics::units::Count::get(),
              "Sum of Q-learning admission rates in milli-percent"),
+    ADD_STAT(qLearningPreserveWaySum, statistics::units::Count::get(),
+             "Sum of Q-learning selected effective preserve ways"),
     ADD_STAT(qAdmissionAccepts, statistics::units::Count::get(),
              "Number of Q-learning preserve admissions accepted"),
     ADD_STAT(qAdmissionRejects, statistics::units::Count::get(),
