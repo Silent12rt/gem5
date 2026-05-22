@@ -109,6 +109,20 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_min_preserve_ways = Param.Unsigned(
         1, "Minimum preserve ways action available to Q-learning"
     )
+    q_learning_default_action = Param.Unsigned(
+        2, "Initial and tie-break Q-learning action index"
+    )
+    q_learning_reuse_cap = Param.Float(
+        4.0, "Cap applied to preserve reuse per accepted admission"
+    )
+    q_action_admission_rates = VectorParam.Float(
+        [6.25, 12.5, 25.0, 50.0, 75.0],
+        "Q-learning preserve admission-rate actions",
+    )
+    q_action_preserve_ways = VectorParam.Int(
+        [4, 6, 8, 10, 10],
+        "Q-learning effective preserve-way actions",
+    )
     q_reward_non_preserve_victim = Param.Float(
         0.25, "Reward weight for selecting non-preserve victims"
     )
@@ -126,6 +140,9 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_penalty_admitted_preserve = Param.Float(
         0.8, "Penalty weight for accepted preserve admissions"
+    )
+    q_penalty_admission_pressure = Param.Float(
+        0.02, "Penalty weight for high preserve admission acceptance percentage"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"

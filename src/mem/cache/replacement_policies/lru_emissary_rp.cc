@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <fstream>
 #include <limits>
 #include <map>
@@ -66,16 +67,19 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_learning_epsilon(p.q_learning_epsilon),
       q_learning_target_saturation(p.q_learning_target_saturation),
       q_learning_min_preserve_ways(p.q_learning_min_preserve_ways),
+      q_learning_default_action(p.q_learning_default_action),
+      q_learning_reuse_cap(p.q_learning_reuse_cap),
       q_reward_non_preserve_victim(p.q_reward_non_preserve_victim),
       q_penalty_preserve_victim(p.q_penalty_preserve_victim),
       q_penalty_quota_exceeded(p.q_penalty_quota_exceeded),
       q_penalty_saturation(p.q_penalty_saturation),
       q_reward_preserve_hit(p.q_reward_preserve_hit),
       q_penalty_admitted_preserve(p.q_penalty_admitted_preserve),
+      q_penalty_admission_pressure(p.q_penalty_admission_pressure),
       q_learning_set_guard(p.q_learning_set_guard),
       q_learning_seed(p.q_learning_seed),
       q_num_actions(0),
-      q_num_states(18),
+      q_num_states(54),
       q_last_state(0),
       q_last_action(0),
       q_has_last(false),
@@ -101,17 +105,37 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_learning_min_preserve_ways < 1) {
         q_learning_min_preserve_ways = 1;
     }
-    q_actions = {
-        {12.5, 8},
-        {25.0, 10},
-        {50.0, 10},
-        {75.0, 10},
-    };
+    if (q_learning_reuse_cap <= 0.0) {
+        q_learning_reuse_cap = 1.0;
+    }
+
+    const std::size_t actionCount = std::min(
+        p.q_action_admission_rates.size(), p.q_action_preserve_ways.size());
+    for (std::size_t action = 0; action < actionCount; action++) {
+        const double rate = std::max(
+            0.0, std::min(100.0, p.q_action_admission_rates[action]));
+        const int ways = std::max(
+            q_learning_min_preserve_ways,
+            std::min(static_cast<int>(p.q_action_preserve_ways[action]),
+                preserve_ways));
+        q_actions.push_back({rate, ways});
+    }
+    if (q_actions.empty()) {
+        q_actions = {
+            {6.25, 4},
+            {12.5, 6},
+            {25.0, 8},
+            {50.0, 10},
+            {75.0, 10},
+        };
+    }
     q_num_actions = static_cast<int>(q_actions.size());
+    q_learning_default_action = std::max(
+        0, std::min(q_learning_default_action, q_num_actions - 1));
     q_values.assign(q_num_states * q_num_actions, 0.0);
     if (q_learning_preserve) {
-        q_last_state = qState(0.0, 0.0, 0.0);
-        q_last_action = 2;
+        q_last_state = qState(0.0, 0.0, 0.0, 0.0);
+        q_last_action = q_learning_default_action;
         q_has_last = true;
         effective_preserve_ways = qActionToPreserveWays(q_last_action);
     }
@@ -371,30 +395,42 @@ LRUEmissary::dumpPreserveHist()
         static_cast<double>(epoch_preserve_hits) /
             static_cast<double>(epoch_admission_accepts) : 0.0;
     const double cappedPreserveReuse =
-        std::min(preserveReusePerAdmission, 8.0);
+        std::min(preserveReusePerAdmission, q_learning_reuse_cap);
     const double admittedPreserveK =
         static_cast<double>(epoch_admission_accepts) / 1000.0;
 
     if (q_learning_preserve && numSets > 0) {
-        const double reward =
-            q_reward_preserve_hit *
-                cappedPreserveReuse +
+        const double reuseReward =
+            q_reward_preserve_hit * cappedPreserveReuse;
+        const double nonPreserveVictimReward =
             q_reward_non_preserve_victim *
-                (static_cast<double>(epoch_non_preserve_victims) / 10000.0) -
+                (static_cast<double>(epoch_non_preserve_victims) / 10000.0);
+        const double preserveVictimPenalty =
             q_penalty_preserve_victim *
-                (static_cast<double>(epoch_preserve_victims) / 1000.0) -
-            q_penalty_admitted_preserve *
-                admittedPreserveK -
+                (static_cast<double>(epoch_preserve_victims) / 1000.0);
+        const double admittedPreservePenalty =
+            q_penalty_admitted_preserve * admittedPreserveK;
+        const double admissionPressurePenalty =
+            q_penalty_admission_pressure * admissionAcceptPct;
+        const double quotaPenalty =
             q_penalty_quota_exceeded *
-                static_cast<double>(epoch_quota_exceeded_sets) -
+                static_cast<double>(epoch_quota_exceeded_sets);
+        const double saturationPenalty =
             q_penalty_saturation *
                 std::max(0.0, saturatedPct - q_learning_target_saturation);
+        const double reward =
+            reuseReward + nonPreserveVictimReward -
+            preserveVictimPenalty - admittedPreservePenalty -
+            admissionPressurePenalty - quotaPenalty - saturationPenalty;
         const int nextState =
             qState(saturatedPct, preserveVictimPct,
-                preserveReusePerAdmission);
+                preserveReusePerAdmission, admissionAcceptPct);
         qUpdate(
             nextState, reward, saturatedPct, preserveVictimPct,
-            preserveReusePerAdmission, admissionAcceptPct);
+            preserveReusePerAdmission, admissionAcceptPct, reuseReward,
+            nonPreserveVictimReward, preserveVictimPenalty,
+            admittedPreservePenalty, admissionPressurePenalty, quotaPenalty,
+            saturationPenalty);
         resetEpochCounters();
     }
 
@@ -499,7 +535,7 @@ LRUEmissary::qApplyAdmission(
 int
 LRUEmissary::qState(
     double saturatedPct, double preserveVictimPct,
-    double preserveReusePerAdmission) const
+    double preserveReusePerAdmission, double admissionAcceptPct) const
 {
     const int saturationBin =
         saturatedPct < 10.0 ? 0 : (saturatedPct < 50.0 ? 1 : 2);
@@ -507,7 +543,10 @@ LRUEmissary::qState(
     const int reuseBin =
         preserveReusePerAdmission < 0.5 ? 0 :
             (preserveReusePerAdmission < 2.0 ? 1 : 2);
-    return (saturationBin * 2 + victimBin) * 3 + reuseBin;
+    const int admissionBin =
+        admissionAcceptPct < 10.0 ? 0 : (admissionAcceptPct < 40.0 ? 1 : 2);
+    return ((saturationBin * 2 + victimBin) * 3 + reuseBin) * 3 +
+        admissionBin;
 }
 
 int
@@ -521,7 +560,7 @@ LRUEmissary::qChooseAction(int state)
     }
 
     stats.qLearningExploits++;
-    int bestAction = std::min(2, q_num_actions - 1);
+    int bestAction = q_learning_default_action;
     double bestValue = q_values[state * q_num_actions + bestAction];
     for (int action = 0; action < q_num_actions; action++) {
         const double value = q_values[state * q_num_actions + action];
@@ -537,7 +576,10 @@ void
 LRUEmissary::qUpdate(
     int nextState, double reward, double saturatedPct,
     double preserveVictimPct, double preserveReusePerAdmission,
-    double admissionAcceptPct)
+    double admissionAcceptPct, double reuseReward,
+    double nonPreserveVictimReward, double preserveVictimPenalty,
+    double admittedPreservePenalty, double admissionPressurePenalty,
+    double quotaPenalty, double saturationPenalty)
 {
     if (q_has_last) {
         double nextBest = -std::numeric_limits<double>::infinity();
@@ -556,7 +598,10 @@ LRUEmissary::qUpdate(
     const int nextPreserveWays = qActionToPreserveWays(nextAction);
     qLogEpoch(
         nextState, nextAction, reward, saturatedPct, preserveVictimPct,
-        preserveReusePerAdmission, admissionAcceptPct);
+        preserveReusePerAdmission, admissionAcceptPct, reuseReward,
+        nonPreserveVictimReward, preserveVictimPenalty,
+        admittedPreservePenalty, admissionPressurePenalty, quotaPenalty,
+        saturationPenalty);
     q_last_state = nextState;
     q_last_action = nextAction;
     q_has_last = true;
@@ -570,7 +615,10 @@ void
 LRUEmissary::qLogEpoch(
     int state, int action, double reward, double saturatedPct,
     double preserveVictimPct, double preserveReusePerAdmission,
-    double admissionAcceptPct)
+    double admissionAcceptPct, double reuseReward,
+    double nonPreserveVictimReward, double preserveVictimPenalty,
+    double admittedPreservePenalty, double admissionPressurePenalty,
+    double quotaPenalty, double saturationPenalty)
 {
     std::ofstream qOut;
     qOut.open(simout.directory() + "/q_learning.csv", std::fstream::app);
@@ -580,7 +628,11 @@ LRUEmissary::qLogEpoch(
              << "saturated_pct,preserve_victim_pct,preserve_victims,"
              << "non_preserve_victims,preserve_hits,admission_accepts,"
              << "admission_rejects,admission_accept_pct,"
-             << "preserve_reuse_per_admission,quota_exceeded_sets\n";
+             << "preserve_reuse_per_admission,quota_exceeded_sets,"
+             << "reuse_reward,non_preserve_victim_reward,"
+             << "preserve_victim_penalty,admitted_preserve_penalty,"
+             << "admission_pressure_penalty,quota_penalty,"
+             << "saturation_penalty\n";
         q_log_header_written = true;
     }
     qOut << curTick() << "," << state << "," << action << ","
@@ -591,7 +643,10 @@ LRUEmissary::qLogEpoch(
          << "," << epoch_preserve_hits << "," << epoch_admission_accepts
          << "," << epoch_admission_rejects << "," << admissionAcceptPct
          << "," << preserveReusePerAdmission << ","
-         << epoch_quota_exceeded_sets << "\n";
+         << epoch_quota_exceeded_sets << "," << reuseReward << ","
+         << nonPreserveVictimReward << "," << preserveVictimPenalty << ","
+         << admittedPreservePenalty << "," << admissionPressurePenalty << ","
+         << quotaPenalty << "," << saturationPenalty << "\n";
 }
 
 void

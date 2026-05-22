@@ -90,12 +90,15 @@ class LRUEmissary : public Base
     double q_learning_epsilon;
     double q_learning_target_saturation;
     int q_learning_min_preserve_ways;
+    int q_learning_default_action;
+    double q_learning_reuse_cap;
     double q_reward_non_preserve_victim;
     double q_penalty_preserve_victim;
     double q_penalty_quota_exceeded;
     double q_penalty_saturation;
     double q_reward_preserve_hit;
     double q_penalty_admitted_preserve;
+    double q_penalty_admission_pressure;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -174,16 +177,22 @@ class LRUEmissary : public Base
         const PacketPtr pkt) const;
     int qState(
         double saturatedPct, double preserveVictimPct,
-        double preserveReusePerAdmission) const;
+        double preserveReusePerAdmission, double admissionAcceptPct) const;
     int qChooseAction(int state);
     void qUpdate(
         int nextState, double reward, double saturatedPct,
         double preserveVictimPct, double preserveReusePerAdmission,
-        double admissionAcceptPct);
+        double admissionAcceptPct, double reuseReward,
+        double nonPreserveVictimReward, double preserveVictimPenalty,
+        double admittedPreservePenalty, double admissionPressurePenalty,
+        double quotaPenalty, double saturationPenalty);
     void qLogEpoch(
         int state, int action, double reward, double saturatedPct,
         double preserveVictimPct, double preserveReusePerAdmission,
-        double admissionAcceptPct);
+        double admissionAcceptPct, double reuseReward,
+        double nonPreserveVictimReward, double preserveVictimPenalty,
+        double admittedPreservePenalty, double admissionPressurePenalty,
+        double quotaPenalty, double saturationPenalty);
     void resetEpochCounters();
 };
 

@@ -51,6 +51,19 @@ from m5.util import fatal
 from gem5.isas import ISA
 
 
+def _parse_number_list(option_name, option_value, convert):
+    if option_value is None or option_value == "":
+        return []
+    try:
+        return [
+            convert(token)
+            for token in option_value.replace(",", " ").split()
+            if token
+        ]
+    except ValueError:
+        fatal("Bad value for %s: %s", option_name, option_value)
+
+
 def _get_hwp(hwp_option):
     if hwp_option == None:
         return NULL
@@ -265,6 +278,35 @@ def config_cache(options, system):
                     1,
                     min(int(options.q_learning_min_preserve_ways), preserve_ways),
                 )
+                system.l2.replacement_policy.q_learning_default_action = max(
+                    0, int(options.q_learning_default_action)
+                )
+                system.l2.replacement_policy.q_learning_reuse_cap = (
+                    options.q_learning_reuse_cap
+                )
+                q_action_admission_rates = _parse_number_list(
+                    "--q-action-admission-rates",
+                    options.q_action_admission_rates,
+                    float,
+                )
+                q_action_preserve_ways = _parse_number_list(
+                    "--q-action-preserve-ways",
+                    options.q_action_preserve_ways,
+                    int,
+                )
+                if q_action_admission_rates or q_action_preserve_ways:
+                    if len(q_action_admission_rates) != len(q_action_preserve_ways):
+                        fatal(
+                            "--q-action-admission-rates and "
+                            "--q-action-preserve-ways must have the same length"
+                        )
+                    system.l2.replacement_policy.q_action_admission_rates = (
+                        q_action_admission_rates
+                    )
+                    system.l2.replacement_policy.q_action_preserve_ways = [
+                        max(1, min(int(ways), preserve_ways))
+                        for ways in q_action_preserve_ways
+                    ]
                 system.l2.replacement_policy.q_reward_non_preserve_victim = (
                     options.q_reward_non_preserve_victim
                 )
@@ -282,6 +324,9 @@ def config_cache(options, system):
                 )
                 system.l2.replacement_policy.q_penalty_admitted_preserve = (
                     options.q_penalty_admitted_preserve
+                )
+                system.l2.replacement_policy.q_penalty_admission_pressure = (
+                    options.q_penalty_admission_pressure
                 )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard
