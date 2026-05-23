@@ -89,6 +89,7 @@ class LRUEmissary : public Base
     double q_learning_gamma;
     double q_learning_epsilon;
     double q_learning_target_saturation;
+    double q_learning_target_occupancy;
     int q_learning_min_preserve_ways;
     int q_learning_default_action;
     double q_learning_reuse_cap;
@@ -99,6 +100,8 @@ class LRUEmissary : public Base
     double q_reward_preserve_hit;
     double q_penalty_admitted_preserve;
     double q_penalty_admission_pressure;
+    double q_penalty_preserve_clear;
+    double q_penalty_preserve_occupancy;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -116,6 +119,7 @@ class LRUEmissary : public Base
     mutable uint64_t epoch_preserve_victims;
     mutable uint64_t epoch_non_preserve_victims;
     mutable uint64_t epoch_quota_exceeded_sets;
+    mutable uint64_t epoch_preserve_clears;
     TaggedIndexingPolicy *indexingPolicy;
 
     mutable struct LRUEmissaryStats : public statistics::Group
@@ -176,23 +180,28 @@ class LRUEmissary : public Base
         const std::shared_ptr<ReplacementData>& replacement_data,
         const PacketPtr pkt) const;
     int qState(
-        double saturatedPct, double preserveVictimPct,
-        double preserveReusePerAdmission, double admissionAcceptPct) const;
+        double saturatedPct, double preserveOccupancyPct,
+        double preserveVictimPct, double preserveReusePerAdmission,
+        double admissionAcceptPct) const;
     int qChooseAction(int state);
     void qUpdate(
         int nextState, double reward, double saturatedPct,
-        double preserveVictimPct, double preserveReusePerAdmission,
-        double admissionAcceptPct, double reuseReward,
-        double nonPreserveVictimReward, double preserveVictimPenalty,
-        double admittedPreservePenalty, double admissionPressurePenalty,
-        double quotaPenalty, double saturationPenalty);
+        double preserveOccupancyPct, double preserveVictimPct,
+        double preserveReusePerAdmission, double admissionAcceptPct,
+        double reuseReward, double nonPreserveVictimReward,
+        double preserveVictimPenalty, double admittedPreservePenalty,
+        double admissionPressurePenalty, double preserveClearPenalty,
+        double preserveOccupancyPenalty, double quotaPenalty,
+        double saturationPenalty);
     void qLogEpoch(
         int state, int action, double reward, double saturatedPct,
-        double preserveVictimPct, double preserveReusePerAdmission,
-        double admissionAcceptPct, double reuseReward,
-        double nonPreserveVictimReward, double preserveVictimPenalty,
-        double admittedPreservePenalty, double admissionPressurePenalty,
-        double quotaPenalty, double saturationPenalty);
+        double preserveOccupancyPct, double preserveVictimPct,
+        double preserveReusePerAdmission, double admissionAcceptPct,
+        double reuseReward, double nonPreserveVictimReward,
+        double preserveVictimPenalty, double admittedPreservePenalty,
+        double admissionPressurePenalty, double preserveClearPenalty,
+        double preserveOccupancyPenalty, double quotaPenalty,
+        double saturationPenalty);
     void resetEpochCounters();
 };
 

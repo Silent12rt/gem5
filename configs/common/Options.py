@@ -232,6 +232,7 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-learning-gamma", type=float, default=0.8)
     parser.add_argument("--q-learning-epsilon", type=float, default=0.03)
     parser.add_argument("--q-learning-target-saturation", type=float, default=10.0)
+    parser.add_argument("--q-learning-target-occupancy", type=float, default=60.0)
     parser.add_argument("--q-learning-min-preserve-ways", type=int, default=1)
     parser.add_argument("--q-learning-default-action", type=int, default=2)
     parser.add_argument("--q-learning-reuse-cap", type=float, default=4.0)
@@ -244,6 +245,8 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-reward-preserve-hit", type=float, default=0.5)
     parser.add_argument("--q-penalty-admitted-preserve", type=float, default=0.8)
     parser.add_argument("--q-penalty-admission-pressure", type=float, default=0.02)
+    parser.add_argument("--q-penalty-preserve-clear", type=float, default=1.0)
+    parser.add_argument("--q-penalty-preserve-occupancy", type=float, default=0.03)
     parser.add_argument("--q-learning-disable-set-guard", action="store_true", default=False)
     parser.add_argument("--q-learning-seed", type=int, default=0)
 

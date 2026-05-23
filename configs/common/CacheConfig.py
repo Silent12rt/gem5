@@ -274,6 +274,9 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_target_saturation = (
                     options.q_learning_target_saturation
                 )
+                system.l2.replacement_policy.q_learning_target_occupancy = (
+                    options.q_learning_target_occupancy
+                )
                 system.l2.replacement_policy.q_learning_min_preserve_ways = max(
                     1,
                     min(int(options.q_learning_min_preserve_ways), preserve_ways),
@@ -327,6 +330,12 @@ def config_cache(options, system):
                 )
                 system.l2.replacement_policy.q_penalty_admission_pressure = (
                     options.q_penalty_admission_pressure
+                )
+                system.l2.replacement_policy.q_penalty_preserve_clear = (
+                    options.q_penalty_preserve_clear
+                )
+                system.l2.replacement_policy.q_penalty_preserve_occupancy = (
+                    options.q_penalty_preserve_occupancy
                 )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard

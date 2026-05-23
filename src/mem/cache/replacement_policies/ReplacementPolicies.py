@@ -106,6 +106,9 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
     )
+    q_learning_target_occupancy = Param.Float(
+        60.0, "Preserve occupancy budget used by Q-learning reward"
+    )
     q_learning_min_preserve_ways = Param.Unsigned(
         1, "Minimum preserve ways action available to Q-learning"
     )
@@ -143,6 +146,12 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_penalty_admission_pressure = Param.Float(
         0.02, "Penalty weight for high preserve admission acceptance percentage"
+    )
+    q_penalty_preserve_clear = Param.Float(
+        1.0, "Penalty weight for preserved lines cleared without reuse"
+    )
+    q_penalty_preserve_occupancy = Param.Float(
+        0.03, "Penalty weight for preserve occupancy above target"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"

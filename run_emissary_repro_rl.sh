@@ -45,6 +45,7 @@ PAPER_STARVE_RANDOMNESS=${PAPER_STARVE_RANDOMNESS:-100}
 RL_SEEDS=${RL_SEEDS:-"1 2 3"}
 RL_SAMPLE_RATE=${RL_SAMPLE_RATE:-12.5}
 RL_TARGET_SATURATION=${RL_TARGET_SATURATION:-10}
+RL_TARGET_OCCUPANCY=${RL_TARGET_OCCUPANCY:-60.0}
 RL_EPSILON=${RL_EPSILON:-0.03}
 RL_ALPHA=${RL_ALPHA:-0.2}
 RL_GAMMA=${RL_GAMMA:-0.8}
@@ -60,6 +61,8 @@ RL_Q_PENALTY_SATURATION=${RL_Q_PENALTY_SATURATION:-150.0}
 RL_Q_REWARD_PRESERVE_HIT=${RL_Q_REWARD_PRESERVE_HIT:-0.5}
 RL_Q_PENALTY_ADMITTED_PRESERVE=${RL_Q_PENALTY_ADMITTED_PRESERVE:-0.8}
 RL_Q_PENALTY_ADMISSION_PRESSURE=${RL_Q_PENALTY_ADMISSION_PRESSURE:-0.02}
+RL_Q_PENALTY_PRESERVE_CLEAR=${RL_Q_PENALTY_PRESERVE_CLEAR:-1.0}
+RL_Q_PENALTY_PRESERVE_OCCUPANCY=${RL_Q_PENALTY_PRESERVE_OCCUPANCY:-0.03}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -178,6 +181,7 @@ run_rl_suite() {
             --q-learning-gamma="${RL_GAMMA}" \
             --q-learning-epsilon="${RL_EPSILON}" \
             --q-learning-target-saturation="${RL_TARGET_SATURATION}" \
+            --q-learning-target-occupancy="${RL_TARGET_OCCUPANCY}" \
             --q-learning-min-preserve-ways="${RL_MIN_PRESERVE_WAYS}" \
             --q-learning-default-action="${RL_DEFAULT_ACTION}" \
             --q-learning-reuse-cap="${RL_REUSE_CAP}" \
@@ -190,6 +194,8 @@ run_rl_suite() {
             --q-reward-preserve-hit="${RL_Q_REWARD_PRESERVE_HIT}" \
             --q-penalty-admitted-preserve="${RL_Q_PENALTY_ADMITTED_PRESERVE}" \
             --q-penalty-admission-pressure="${RL_Q_PENALTY_ADMISSION_PRESSURE}" \
+            --q-penalty-preserve-clear="${RL_Q_PENALTY_PRESERVE_CLEAR}" \
+            --q-penalty-preserve-occupancy="${RL_Q_PENALTY_PRESERVE_OCCUPANCY}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \
             --emissary-require-iq-empty \
