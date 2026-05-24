@@ -278,7 +278,7 @@ def config_cache(options, system):
                     options.q_learning_target_occupancy
                 )
                 system.l2.replacement_policy.q_learning_min_preserve_ways = max(
-                    1,
+                    0,
                     min(int(options.q_learning_min_preserve_ways), preserve_ways),
                 )
                 system.l2.replacement_policy.q_learning_default_action = max(
@@ -307,7 +307,7 @@ def config_cache(options, system):
                         q_action_admission_rates
                     )
                     system.l2.replacement_policy.q_action_preserve_ways = [
-                        max(1, min(int(ways), preserve_ways))
+                        max(0, min(int(ways), preserve_ways))
                         for ways in q_action_preserve_ways
                     ]
                 system.l2.replacement_policy.q_reward_non_preserve_victim = (

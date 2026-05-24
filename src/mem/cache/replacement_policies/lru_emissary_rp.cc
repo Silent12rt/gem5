@@ -111,8 +111,8 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_learning_min_preserve_ways > preserve_ways) {
         q_learning_min_preserve_ways = preserve_ways;
     }
-    if (q_learning_min_preserve_ways < 1) {
-        q_learning_min_preserve_ways = 1;
+    if (q_learning_min_preserve_ways < 0) {
+        q_learning_min_preserve_ways = 0;
     }
     if (q_learning_reuse_cap <= 0.0) {
         q_learning_reuse_cap = 1.0;
@@ -134,7 +134,7 @@ LRUEmissary::LRUEmissary(const Params &p)
     }
     if (q_actions.empty()) {
         q_actions = {
-            {0.0, 1},
+            {0.0, 0},
             {1.5625, 1},
             {3.125, 2},
             {6.25, 3},
@@ -393,7 +393,8 @@ LRUEmissary::dumpPreserveHist()
         }
         totalPreserved += numPreserved;
 
-        if (numPreserved >= effective_preserve_ways) {
+        if (effective_preserve_ways > 0 &&
+            numPreserved >= effective_preserve_ways) {
             saturatedSets++;
         }
         if (numPreserved > effective_preserve_ways) {
@@ -522,7 +523,7 @@ LRUEmissary::qActionToPreserveWays(int action) const
     }
     action = std::max(0, std::min(action,
         static_cast<int>(q_actions.size()) - 1));
-    const int minWays = std::max(1,
+    const int minWays = std::max(0,
         std::min(q_learning_min_preserve_ways, preserve_ways));
     return std::max(minWays,
         std::min(q_actions[action].preserveWays, preserve_ways));
@@ -559,6 +560,13 @@ LRUEmissary::qApplyAdmission(
     auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
         replacement_data);
     if (repl_data->blk && repl_data->blk->isPreserve()) {
+        return;
+    }
+
+    if (effective_preserve_ways <= 0) {
+        pkt->setPreserve(false);
+        stats.qAdmissionRejects++;
+        epoch_admission_rejects++;
         return;
     }
 

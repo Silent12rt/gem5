@@ -110,10 +110,10 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         1.5, "Preserve occupancy budget used by Q-learning reward"
     )
     q_learning_min_preserve_ways = Param.Unsigned(
-        1, "Minimum preserve ways action available to Q-learning"
+        0, "Minimum preserve ways action available to Q-learning"
     )
     q_learning_default_action = Param.Unsigned(
-        1, "Initial and tie-break Q-learning action index"
+        0, "Initial and tie-break Q-learning action index"
     )
     q_learning_reuse_cap = Param.Float(
         1.5, "Cap applied to preserve reuse per accepted admission"
@@ -123,7 +123,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "Q-learning preserve admission-rate actions",
     )
     q_action_preserve_ways = VectorParam.Int(
-        [1, 1, 2, 3, 4],
+        [0, 1, 2, 3, 4],
         "Q-learning effective preserve-way actions",
     )
     q_reward_non_preserve_victim = Param.Float(
