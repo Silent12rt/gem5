@@ -70,11 +70,14 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_learning_min_preserve_ways(p.q_learning_min_preserve_ways),
       q_learning_default_action(p.q_learning_default_action),
       q_learning_reuse_cap(p.q_learning_reuse_cap),
+      q_learning_inst_baseline_alpha(p.q_learning_inst_baseline_alpha),
       q_reward_non_preserve_victim(p.q_reward_non_preserve_victim),
       q_penalty_preserve_victim(p.q_penalty_preserve_victim),
       q_penalty_quota_exceeded(p.q_penalty_quota_exceeded),
       q_penalty_saturation(p.q_penalty_saturation),
       q_reward_preserve_hit(p.q_reward_preserve_hit),
+      q_reward_inst_fill_reduction(p.q_reward_inst_fill_reduction),
+      q_penalty_inst_fill_regression(p.q_penalty_inst_fill_regression),
       q_penalty_admitted_preserve(p.q_penalty_admitted_preserve),
       q_penalty_admission_pressure(p.q_penalty_admission_pressure),
       q_penalty_preserve_clear(p.q_penalty_preserve_clear),
@@ -89,6 +92,8 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_last_action(0),
       q_has_last(false),
       q_log_header_written(false),
+      q_has_inst_fill_off_baseline(false),
+      q_inst_fill_off_baseline(0.0),
       q_rng(q_learning_seed ?
             Random::genRandom(static_cast<uint32_t>(q_learning_seed)) :
             Random::genRandom()),
@@ -120,6 +125,8 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_learning_target_occupancy < 0.0) {
         q_learning_target_occupancy = 0.0;
     }
+    q_learning_inst_baseline_alpha = std::max(
+        0.0, std::min(1.0, q_learning_inst_baseline_alpha));
 
     const std::size_t actionCount = std::min(
         p.q_action_admission_rates.size(), p.q_action_preserve_ways.size());
@@ -436,6 +443,44 @@ LRUEmissary::dumpPreserveHist()
         static_cast<double>(epoch_admission_accepts) / 1000.0;
 
     if (q_learning_preserve && numSets > 0) {
+        const int activeAction =
+            q_has_last ? q_last_action : q_learning_default_action;
+        const bool activeOff =
+            qActionToAdmissionRate(activeAction) <= 0.0 ||
+            qActionToPreserveWays(activeAction) <= 0;
+        double instFillOffBaseline = q_has_inst_fill_off_baseline ?
+            q_inst_fill_off_baseline : -1.0;
+        double instFillDelta = 0.0;
+        double instFillReductionReward = 0.0;
+        double instFillRegressionPenalty = 0.0;
+
+        if (!activeOff && q_has_inst_fill_off_baseline) {
+            instFillDelta = q_inst_fill_off_baseline -
+                static_cast<double>(epoch_inst_fills);
+            instFillReductionReward =
+                q_reward_inst_fill_reduction *
+                (std::max(0.0, instFillDelta) / 1000.0);
+            instFillRegressionPenalty =
+                q_penalty_inst_fill_regression *
+                (std::max(0.0, -instFillDelta) / 1000.0);
+        }
+
+        if (activeOff) {
+            const double epochInstFills =
+                static_cast<double>(epoch_inst_fills);
+            if (!q_has_inst_fill_off_baseline) {
+                q_inst_fill_off_baseline = epochInstFills;
+                q_has_inst_fill_off_baseline = true;
+            } else {
+                q_inst_fill_off_baseline =
+                    (1.0 - q_learning_inst_baseline_alpha) *
+                        q_inst_fill_off_baseline +
+                    q_learning_inst_baseline_alpha * epochInstFills;
+            }
+            instFillOffBaseline = q_inst_fill_off_baseline;
+            stats.qInstFillBaselineUpdates++;
+        }
+
         const double reuseReward =
             q_reward_preserve_hit * cappedPreserveReuse;
         const double nonPreserveVictimReward =
@@ -469,7 +514,9 @@ LRUEmissary::dumpPreserveHist()
             q_penalty_saturation *
                 std::max(0.0, saturatedPct - q_learning_target_saturation);
         const double reward =
-            reuseReward + nonPreserveVictimReward -
+            reuseReward + nonPreserveVictimReward +
+            instFillReductionReward -
+            instFillRegressionPenalty -
             instFillPenalty - dataFillPenalty -
             preserveVictimPenalty - admittedPreservePenalty -
             admissionPressurePenalty - preserveClearPenalty -
@@ -481,6 +528,8 @@ LRUEmissary::dumpPreserveHist()
             nextState, reward, saturatedPct, preserveOccupancyPct,
             preserveVictimPct, preserveReusePerAdmission, admissionAcceptPct,
             reuseReward, nonPreserveVictimReward,
+            instFillReductionReward, instFillRegressionPenalty,
+            instFillOffBaseline, instFillDelta,
             instFillPenalty, dataFillPenalty, preserveVictimPenalty,
             admittedPreservePenalty, admissionPressurePenalty,
             preserveClearPenalty, preserveOccupancyPenalty, quotaPenalty,
@@ -645,12 +694,16 @@ LRUEmissary::qUpdate(
     double preserveOccupancyPct, double preserveVictimPct,
     double preserveReusePerAdmission, double admissionAcceptPct,
     double reuseReward, double nonPreserveVictimReward,
+    double instFillReductionReward, double instFillRegressionPenalty,
+    double instFillOffBaseline, double instFillDelta,
     double instFillPenalty, double dataFillPenalty,
     double preserveVictimPenalty, double admittedPreservePenalty,
     double admissionPressurePenalty, double preserveClearPenalty,
     double preserveOccupancyPenalty, double quotaPenalty,
     double saturationPenalty)
 {
+    const int activeAction =
+        q_has_last ? q_last_action : q_learning_default_action;
     if (q_has_last) {
         double nextBest = -std::numeric_limits<double>::infinity();
         for (int action = 0; action < q_num_actions; action++) {
@@ -667,9 +720,12 @@ LRUEmissary::qUpdate(
     const int nextAction = qChooseAction(nextState);
     const int nextPreserveWays = qActionToPreserveWays(nextAction);
     qLogEpoch(
-        nextState, nextAction, reward, saturatedPct, preserveOccupancyPct,
+        nextState, activeAction, nextAction, reward, saturatedPct,
+        preserveOccupancyPct,
         preserveVictimPct, preserveReusePerAdmission, admissionAcceptPct,
         reuseReward, nonPreserveVictimReward,
+        instFillReductionReward, instFillRegressionPenalty,
+        instFillOffBaseline, instFillDelta,
         instFillPenalty, dataFillPenalty, preserveVictimPenalty,
         admittedPreservePenalty, admissionPressurePenalty,
         preserveClearPenalty, preserveOccupancyPenalty, quotaPenalty,
@@ -685,10 +741,13 @@ LRUEmissary::qUpdate(
 
 void
 LRUEmissary::qLogEpoch(
-    int state, int action, double reward, double saturatedPct,
+    int state, int activeAction, int nextAction, double reward,
+    double saturatedPct,
     double preserveOccupancyPct, double preserveVictimPct,
     double preserveReusePerAdmission, double admissionAcceptPct,
     double reuseReward, double nonPreserveVictimReward,
+    double instFillReductionReward, double instFillRegressionPenalty,
+    double instFillOffBaseline, double instFillDelta,
     double instFillPenalty, double dataFillPenalty,
     double preserveVictimPenalty, double admittedPreservePenalty,
     double admissionPressurePenalty, double preserveClearPenalty,
@@ -699,6 +758,7 @@ LRUEmissary::qLogEpoch(
     qOut.open(simout.directory() + "/q_learning.csv", std::fstream::app);
     if (!q_log_header_written) {
         qOut << "tick,state,action,admission_rate,effective_preserve_ways,"
+             << "next_action,next_admission_rate,next_effective_preserve_ways,"
              << "reward,"
              << "saturated_pct,preserve_occupancy_pct,preserve_victim_pct,"
              << "preserve_victims,non_preserve_victims,preserve_hits,"
@@ -707,6 +767,8 @@ LRUEmissary::qLogEpoch(
              << "preserve_reuse_per_admission,preserve_clears,"
              << "quota_exceeded_sets,"
              << "reuse_reward,non_preserve_victim_reward,"
+             << "inst_fill_reduction_reward,inst_fill_regression_penalty,"
+             << "inst_fill_off_baseline,inst_fill_delta,"
              << "inst_fill_penalty,data_fill_penalty,"
              << "preserve_victim_penalty,admitted_preserve_penalty,"
              << "admission_pressure_penalty,preserve_clear_penalty,"
@@ -714,9 +776,11 @@ LRUEmissary::qLogEpoch(
              << "saturation_penalty\n";
         q_log_header_written = true;
     }
-    qOut << curTick() << "," << state << "," << action << ","
-         << qActionToAdmissionRate(action) << ","
-         << qActionToPreserveWays(action) << "," << reward << ","
+    qOut << curTick() << "," << state << "," << activeAction << ","
+         << qActionToAdmissionRate(activeAction) << ","
+         << qActionToPreserveWays(activeAction) << ","
+         << nextAction << "," << qActionToAdmissionRate(nextAction) << ","
+         << qActionToPreserveWays(nextAction) << "," << reward << ","
          << saturatedPct << "," << preserveOccupancyPct << ","
          << preserveVictimPct << "," << epoch_preserve_victims << ","
          << epoch_non_preserve_victims << "," << epoch_preserve_hits
@@ -727,7 +791,10 @@ LRUEmissary::qLogEpoch(
          << "," << preserveReusePerAdmission << ","
          << epoch_preserve_clears << "," << epoch_quota_exceeded_sets
          << "," << reuseReward << ","
-         << nonPreserveVictimReward << "," << instFillPenalty << ","
+         << nonPreserveVictimReward << ","
+         << instFillReductionReward << "," << instFillRegressionPenalty
+         << "," << instFillOffBaseline << "," << instFillDelta << ","
+         << instFillPenalty << ","
          << dataFillPenalty << "," << preserveVictimPenalty << ","
          << admittedPreservePenalty << "," << admissionPressurePenalty << ","
          << preserveClearPenalty << "," << preserveOccupancyPenalty << ","
@@ -787,6 +854,8 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of data-side L2 fills observed by Q-learning"),
     ADD_STAT(qDataFillsPreservedSet, statistics::units::Count::get(),
              "Number of data-side L2 fills in sets with preserved lines"),
+    ADD_STAT(qInstFillBaselineUpdates, statistics::units::Count::get(),
+             "Number of OFF-action epochs used to update I-fill baseline"),
     ADD_STAT(preserveHits, statistics::units::Count::get(),
              "Number of cache hits on preserved lines")
 {

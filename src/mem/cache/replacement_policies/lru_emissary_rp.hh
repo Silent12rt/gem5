@@ -93,11 +93,14 @@ class LRUEmissary : public Base
     int q_learning_min_preserve_ways;
     int q_learning_default_action;
     double q_learning_reuse_cap;
+    double q_learning_inst_baseline_alpha;
     double q_reward_non_preserve_victim;
     double q_penalty_preserve_victim;
     double q_penalty_quota_exceeded;
     double q_penalty_saturation;
     double q_reward_preserve_hit;
+    double q_reward_inst_fill_reduction;
+    double q_penalty_inst_fill_regression;
     double q_penalty_admitted_preserve;
     double q_penalty_admission_pressure;
     double q_penalty_preserve_clear;
@@ -112,6 +115,8 @@ class LRUEmissary : public Base
     int q_last_action;
     bool q_has_last;
     bool q_log_header_written;
+    bool q_has_inst_fill_off_baseline;
+    double q_inst_fill_off_baseline;
     std::vector<double> q_values;
     std::vector<QAction> q_actions;
     Random::RandomPtr q_rng;
@@ -149,6 +154,7 @@ class LRUEmissary : public Base
         statistics::Scalar qInstFills;
         statistics::Scalar qDataFills;
         statistics::Scalar qDataFillsPreservedSet;
+        statistics::Scalar qInstFillBaselineUpdates;
         statistics::Scalar preserveHits;
     } stats;
 
@@ -197,16 +203,21 @@ class LRUEmissary : public Base
         double preserveOccupancyPct, double preserveVictimPct,
         double preserveReusePerAdmission, double admissionAcceptPct,
         double reuseReward, double nonPreserveVictimReward,
+        double instFillReductionReward, double instFillRegressionPenalty,
+        double instFillOffBaseline, double instFillDelta,
         double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,
         double preserveOccupancyPenalty, double quotaPenalty,
         double saturationPenalty);
     void qLogEpoch(
-        int state, int action, double reward, double saturatedPct,
+        int state, int activeAction, int nextAction, double reward,
+        double saturatedPct,
         double preserveOccupancyPct, double preserveVictimPct,
         double preserveReusePerAdmission, double admissionAcceptPct,
         double reuseReward, double nonPreserveVictimReward,
+        double instFillReductionReward, double instFillRegressionPenalty,
+        double instFillOffBaseline, double instFillDelta,
         double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,

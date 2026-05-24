@@ -287,6 +287,9 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_reuse_cap = (
                     options.q_learning_reuse_cap
                 )
+                system.l2.replacement_policy.q_learning_inst_baseline_alpha = (
+                    options.q_learning_inst_baseline_alpha
+                )
                 q_action_admission_rates = _parse_number_list(
                     "--q-action-admission-rates",
                     options.q_action_admission_rates,
@@ -324,6 +327,12 @@ def config_cache(options, system):
                 )
                 system.l2.replacement_policy.q_reward_preserve_hit = (
                     options.q_reward_preserve_hit
+                )
+                system.l2.replacement_policy.q_reward_inst_fill_reduction = (
+                    options.q_reward_inst_fill_reduction
+                )
+                system.l2.replacement_policy.q_penalty_inst_fill_regression = (
+                    options.q_penalty_inst_fill_regression
                 )
                 system.l2.replacement_policy.q_penalty_admitted_preserve = (
                     options.q_penalty_admitted_preserve

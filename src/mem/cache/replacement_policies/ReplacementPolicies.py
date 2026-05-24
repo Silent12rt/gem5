@@ -118,6 +118,9 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_reuse_cap = Param.Float(
         1.5, "Cap applied to preserve reuse per accepted admission"
     )
+    q_learning_inst_baseline_alpha = Param.Float(
+        0.25, "EWMA alpha for OFF-action instruction-fill baseline"
+    )
     q_action_admission_rates = VectorParam.Float(
         [0.0, 1.5625, 3.125, 6.25, 12.5],
         "Q-learning preserve admission-rate actions",
@@ -140,6 +143,12 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_reward_preserve_hit = Param.Float(
         0.05, "Reward weight for reuse per accepted preserve admission"
+    )
+    q_reward_inst_fill_reduction = Param.Float(
+        10.0, "Reward weight when instruction-side fills fall below OFF baseline"
+    )
+    q_penalty_inst_fill_regression = Param.Float(
+        20.0, "Penalty weight when instruction-side fills exceed OFF baseline"
     )
     q_penalty_admitted_preserve = Param.Float(
         1.5, "Penalty weight for accepted preserve admissions"
