@@ -337,6 +337,12 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_penalty_preserve_occupancy = (
                     options.q_penalty_preserve_occupancy
                 )
+                system.l2.replacement_policy.q_penalty_inst_fill = (
+                    options.q_penalty_inst_fill
+                )
+                system.l2.replacement_policy.q_penalty_data_fill = (
+                    options.q_penalty_data_fill
+                )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard
                 )

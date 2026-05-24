@@ -102,6 +102,8 @@ class LRUEmissary : public Base
     double q_penalty_admission_pressure;
     double q_penalty_preserve_clear;
     double q_penalty_preserve_occupancy;
+    double q_penalty_inst_fill;
+    double q_penalty_data_fill;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -120,6 +122,8 @@ class LRUEmissary : public Base
     mutable uint64_t epoch_non_preserve_victims;
     mutable uint64_t epoch_quota_exceeded_sets;
     mutable uint64_t epoch_preserve_clears;
+    mutable uint64_t epoch_inst_fills;
+    mutable uint64_t epoch_data_fills;
     TaggedIndexingPolicy *indexingPolicy;
 
     mutable struct LRUEmissaryStats : public statistics::Group
@@ -141,6 +145,8 @@ class LRUEmissary : public Base
         statistics::Scalar qAdmissionAccepts;
         statistics::Scalar qAdmissionRejects;
         statistics::Scalar qAdmissionGuardRejects;
+        statistics::Scalar qInstFills;
+        statistics::Scalar qDataFills;
         statistics::Scalar preserveHits;
     } stats;
 
@@ -189,6 +195,7 @@ class LRUEmissary : public Base
         double preserveOccupancyPct, double preserveVictimPct,
         double preserveReusePerAdmission, double admissionAcceptPct,
         double reuseReward, double nonPreserveVictimReward,
+        double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,
         double preserveOccupancyPenalty, double quotaPenalty,
@@ -198,6 +205,7 @@ class LRUEmissary : public Base
         double preserveOccupancyPct, double preserveVictimPct,
         double preserveReusePerAdmission, double admissionAcceptPct,
         double reuseReward, double nonPreserveVictimReward,
+        double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,
         double preserveOccupancyPenalty, double quotaPenalty,

@@ -102,12 +102,12 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_alpha = Param.Float(0.2, "Q-learning learning rate")
     q_learning_gamma = Param.Float(0.8, "Q-learning discount factor")
-    q_learning_epsilon = Param.Float(0.03, "Q-learning exploration rate")
+    q_learning_epsilon = Param.Float(0.05, "Q-learning exploration rate")
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
     )
     q_learning_target_occupancy = Param.Float(
-        60.0, "Preserve occupancy budget used by Q-learning reward"
+        3.0, "Preserve occupancy budget used by Q-learning reward"
     )
     q_learning_min_preserve_ways = Param.Unsigned(
         1, "Minimum preserve ways action available to Q-learning"
@@ -116,18 +116,18 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         2, "Initial and tie-break Q-learning action index"
     )
     q_learning_reuse_cap = Param.Float(
-        4.0, "Cap applied to preserve reuse per accepted admission"
+        1.5, "Cap applied to preserve reuse per accepted admission"
     )
     q_action_admission_rates = VectorParam.Float(
-        [6.25, 12.5, 25.0, 50.0, 75.0],
+        [1.5625, 3.125, 6.25, 12.5, 25.0],
         "Q-learning preserve admission-rate actions",
     )
     q_action_preserve_ways = VectorParam.Int(
-        [4, 6, 8, 10, 10],
+        [1, 2, 3, 4, 6],
         "Q-learning effective preserve-way actions",
     )
     q_reward_non_preserve_victim = Param.Float(
-        0.25, "Reward weight for selecting non-preserve victims"
+        0.0, "Reward weight for selecting non-preserve victims"
     )
     q_penalty_preserve_victim = Param.Float(
         6.0, "Penalty weight for selecting preserve victims"
@@ -139,19 +139,25 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         150.0, "Penalty weight for saturated sets above target"
     )
     q_reward_preserve_hit = Param.Float(
-        0.5, "Reward weight for reuse per accepted preserve admission"
+        0.15, "Reward weight for reuse per accepted preserve admission"
     )
     q_penalty_admitted_preserve = Param.Float(
-        0.8, "Penalty weight for accepted preserve admissions"
+        1.5, "Penalty weight for accepted preserve admissions"
     )
     q_penalty_admission_pressure = Param.Float(
-        0.02, "Penalty weight for high preserve admission acceptance percentage"
+        0.05, "Penalty weight for high preserve admission acceptance percentage"
     )
     q_penalty_preserve_clear = Param.Float(
-        1.0, "Penalty weight for preserved lines cleared without reuse"
+        2.0, "Penalty weight for preserved lines cleared without reuse"
     )
     q_penalty_preserve_occupancy = Param.Float(
-        0.03, "Penalty weight for preserve occupancy above target"
+        1.0, "Penalty weight for preserve occupancy above target"
+    )
+    q_penalty_inst_fill = Param.Float(
+        0.5, "Penalty weight for instruction-side L2 fills in Q-learning"
+    )
+    q_penalty_data_fill = Param.Float(
+        1.5, "Penalty weight for data-side L2 fills in Q-learning"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"
