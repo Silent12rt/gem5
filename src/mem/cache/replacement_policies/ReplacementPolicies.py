@@ -133,13 +133,13 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         6.0, "Penalty weight for selecting preserve victims"
     )
     q_penalty_quota_exceeded = Param.Float(
-        4.0, "Penalty weight for sets above the effective preserve quota"
+        0.0, "Penalty weight for sets above the effective preserve quota"
     )
     q_penalty_saturation = Param.Float(
-        150.0, "Penalty weight for saturated sets above target"
+        0.0, "Penalty weight for saturated sets above target"
     )
     q_reward_preserve_hit = Param.Float(
-        0.15, "Reward weight for reuse per accepted preserve admission"
+        0.10, "Reward weight for reuse per accepted preserve admission"
     )
     q_penalty_admitted_preserve = Param.Float(
         1.5, "Penalty weight for accepted preserve admissions"
@@ -151,13 +151,13 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         2.0, "Penalty weight for preserved lines cleared without reuse"
     )
     q_penalty_preserve_occupancy = Param.Float(
-        1.0, "Penalty weight for preserve occupancy above target"
+        1.5, "Penalty weight for preserve occupancy above target"
     )
     q_penalty_inst_fill = Param.Float(
-        0.5, "Penalty weight for instruction-side L2 fills in Q-learning"
+        0.0, "Penalty weight for instruction-side L2 fills in Q-learning"
     )
     q_penalty_data_fill = Param.Float(
-        1.5, "Penalty weight for data-side L2 fills in Q-learning"
+        2.0, "Penalty weight for data-side L2 fills in preserved sets"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"

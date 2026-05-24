@@ -124,6 +124,7 @@ class LRUEmissary : public Base
     mutable uint64_t epoch_preserve_clears;
     mutable uint64_t epoch_inst_fills;
     mutable uint64_t epoch_data_fills;
+    mutable uint64_t epoch_data_fills_preserved_set;
     TaggedIndexingPolicy *indexingPolicy;
 
     mutable struct LRUEmissaryStats : public statistics::Group
@@ -147,6 +148,7 @@ class LRUEmissary : public Base
         statistics::Scalar qAdmissionGuardRejects;
         statistics::Scalar qInstFills;
         statistics::Scalar qDataFills;
+        statistics::Scalar qDataFillsPreservedSet;
         statistics::Scalar preserveHits;
     } stats;
 

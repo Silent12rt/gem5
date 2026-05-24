@@ -101,6 +101,7 @@ LRUEmissary::LRUEmissary(const Params &p)
       epoch_preserve_clears(0),
       epoch_inst_fills(0),
       epoch_data_fills(0),
+      epoch_data_fills_preserved_set(0),
       indexingPolicy(nullptr),
       stats(this)
 {
@@ -222,12 +223,18 @@ LRUEmissary::reset(
     const PacketPtr pkt)
 {
     if (q_learning_preserve && pkt && pkt->isRead() && pkt->req) {
+        auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
+            replacement_data);
         if (pkt->req->isInstFetch()) {
             stats.qInstFills++;
             epoch_inst_fills++;
         } else {
             stats.qDataFills++;
             epoch_data_fills++;
+            if (repl_data->blk && countSetPreserves(repl_data->blk) > 0) {
+                stats.qDataFillsPreservedSet++;
+                epoch_data_fills_preserved_set++;
+            }
         }
     }
     qApplyAdmission(replacement_data, pkt);
@@ -438,7 +445,8 @@ LRUEmissary::dumpPreserveHist()
                 (static_cast<double>(epoch_inst_fills) / 1000.0);
         const double dataFillPenalty =
             q_penalty_data_fill *
-                (static_cast<double>(epoch_data_fills) / 1000.0);
+                (static_cast<double>(epoch_data_fills_preserved_set) /
+                    1000.0);
         const double preserveVictimPenalty =
             q_penalty_preserve_victim *
                 (static_cast<double>(epoch_preserve_victims) / 1000.0);
@@ -686,7 +694,7 @@ LRUEmissary::qLogEpoch(
              << "reward,"
              << "saturated_pct,preserve_occupancy_pct,preserve_victim_pct,"
              << "preserve_victims,non_preserve_victims,preserve_hits,"
-             << "inst_fills,data_fills,"
+             << "inst_fills,data_fills,data_fills_preserved_set,"
              << "admission_accepts,admission_rejects,admission_accept_pct,"
              << "preserve_reuse_per_admission,preserve_clears,"
              << "quota_exceeded_sets,"
@@ -705,6 +713,7 @@ LRUEmissary::qLogEpoch(
          << preserveVictimPct << "," << epoch_preserve_victims << ","
          << epoch_non_preserve_victims << "," << epoch_preserve_hits
          << "," << epoch_inst_fills << "," << epoch_data_fills
+         << "," << epoch_data_fills_preserved_set
          << "," << epoch_admission_accepts << ","
          << epoch_admission_rejects << "," << admissionAcceptPct
          << "," << preserveReusePerAdmission << ","
@@ -729,6 +738,7 @@ LRUEmissary::resetEpochCounters()
     epoch_preserve_clears = 0;
     epoch_inst_fills = 0;
     epoch_data_fills = 0;
+    epoch_data_fills_preserved_set = 0;
 }
 
 LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
@@ -767,6 +777,8 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of instruction-side L2 fills observed by Q-learning"),
     ADD_STAT(qDataFills, statistics::units::Count::get(),
              "Number of data-side L2 fills observed by Q-learning"),
+    ADD_STAT(qDataFillsPreservedSet, statistics::units::Count::get(),
+             "Number of data-side L2 fills in sets with preserved lines"),
     ADD_STAT(preserveHits, statistics::units::Count::get(),
              "Number of cache hits on preserved lines")
 {
