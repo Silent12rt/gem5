@@ -142,10 +142,10 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_actions.empty()) {
         q_actions = {
             {0.0, 0},
+            {0.78125, 1},
             {1.5625, 1},
             {3.125, 2},
             {6.25, 3},
-            {12.5, 4},
         };
     }
     q_num_actions = static_cast<int>(q_actions.size());
