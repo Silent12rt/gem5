@@ -100,13 +100,17 @@ class LRUEmissary : public Base
     double q_penalty_saturation;
     double q_reward_preserve_hit;
     double q_reward_inst_fill_reduction;
+    double q_reward_total_fill_reduction;
     double q_penalty_inst_fill_regression;
+    double q_penalty_data_fill_regression;
+    double q_penalty_total_fill_regression;
     double q_penalty_admitted_preserve;
     double q_penalty_admission_pressure;
     double q_penalty_preserve_clear;
     double q_penalty_preserve_occupancy;
     double q_penalty_inst_fill;
     double q_penalty_data_fill;
+    bool q_learning_fill_regression_guard;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -116,7 +120,10 @@ class LRUEmissary : public Base
     bool q_has_last;
     bool q_log_header_written;
     bool q_has_inst_fill_off_baseline;
+    bool q_has_fill_off_baseline;
     double q_inst_fill_off_baseline;
+    double q_data_fill_off_baseline;
+    double q_total_fill_off_baseline;
     std::vector<double> q_values;
     std::vector<QAction> q_actions;
     Random::RandomPtr q_rng;
@@ -155,6 +162,7 @@ class LRUEmissary : public Base
         statistics::Scalar qDataFills;
         statistics::Scalar qDataFillsPreservedSet;
         statistics::Scalar qInstFillBaselineUpdates;
+        statistics::Scalar qFillRegressionGuardForces;
         statistics::Scalar preserveHits;
     } stats;
 
@@ -205,6 +213,11 @@ class LRUEmissary : public Base
         double reuseReward, double nonPreserveVictimReward,
         double instFillReductionReward, double instFillRegressionPenalty,
         double instFillOffBaseline, double instFillDelta,
+        double totalFillReductionReward,
+        double dataFillRegressionPenalty,
+        double totalFillRegressionPenalty,
+        double dataFillOffBaseline, double dataFillDelta,
+        double totalFillOffBaseline, double totalFillDelta,
         double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,
@@ -218,6 +231,12 @@ class LRUEmissary : public Base
         double reuseReward, double nonPreserveVictimReward,
         double instFillReductionReward, double instFillRegressionPenalty,
         double instFillOffBaseline, double instFillDelta,
+        double totalFillReductionReward,
+        double dataFillRegressionPenalty,
+        double totalFillRegressionPenalty,
+        double dataFillOffBaseline, double dataFillDelta,
+        double totalFillOffBaseline, double totalFillDelta,
+        bool fillRegressionGuarded,
         double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,

@@ -245,13 +245,21 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-penalty-saturation", type=float, default=0.0)
     parser.add_argument("--q-reward-preserve-hit", type=float, default=0.05)
     parser.add_argument("--q-reward-inst-fill-reduction", type=float, default=4.0)
+    parser.add_argument("--q-reward-total-fill-reduction", type=float, default=4.0)
     parser.add_argument("--q-penalty-inst-fill-regression", type=float, default=50.0)
+    parser.add_argument("--q-penalty-data-fill-regression", type=float, default=80.0)
+    parser.add_argument("--q-penalty-total-fill-regression", type=float, default=60.0)
     parser.add_argument("--q-penalty-admitted-preserve", type=float, default=2.0)
     parser.add_argument("--q-penalty-admission-pressure", type=float, default=0.05)
     parser.add_argument("--q-penalty-preserve-clear", type=float, default=2.0)
     parser.add_argument("--q-penalty-preserve-occupancy", type=float, default=3.0)
     parser.add_argument("--q-penalty-inst-fill", type=float, default=0.0)
     parser.add_argument("--q-penalty-data-fill", type=float, default=8.0)
+    parser.add_argument(
+        "--q-learning-disable-fill-regression-guard",
+        action="store_true",
+        default=False,
+    )
     parser.add_argument("--q-learning-disable-set-guard", action="store_true", default=False)
     parser.add_argument("--q-learning-seed", type=int, default=0)
 

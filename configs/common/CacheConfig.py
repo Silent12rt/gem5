@@ -331,8 +331,17 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_reward_inst_fill_reduction = (
                     options.q_reward_inst_fill_reduction
                 )
+                system.l2.replacement_policy.q_reward_total_fill_reduction = (
+                    options.q_reward_total_fill_reduction
+                )
                 system.l2.replacement_policy.q_penalty_inst_fill_regression = (
                     options.q_penalty_inst_fill_regression
+                )
+                system.l2.replacement_policy.q_penalty_data_fill_regression = (
+                    options.q_penalty_data_fill_regression
+                )
+                system.l2.replacement_policy.q_penalty_total_fill_regression = (
+                    options.q_penalty_total_fill_regression
                 )
                 system.l2.replacement_policy.q_penalty_admitted_preserve = (
                     options.q_penalty_admitted_preserve
@@ -351,6 +360,9 @@ def config_cache(options, system):
                 )
                 system.l2.replacement_policy.q_penalty_data_fill = (
                     options.q_penalty_data_fill
+                )
+                system.l2.replacement_policy.q_learning_fill_regression_guard = (
+                    not options.q_learning_disable_fill_regression_guard
                 )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard

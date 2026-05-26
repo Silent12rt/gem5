@@ -147,8 +147,17 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_reward_inst_fill_reduction = Param.Float(
         4.0, "Reward weight when instruction-side fills fall below OFF baseline"
     )
+    q_reward_total_fill_reduction = Param.Float(
+        4.0, "Reward weight when total fills fall below OFF baseline"
+    )
     q_penalty_inst_fill_regression = Param.Float(
         50.0, "Penalty weight when instruction-side fills exceed OFF baseline"
+    )
+    q_penalty_data_fill_regression = Param.Float(
+        80.0, "Penalty weight when data-side fills exceed OFF baseline"
+    )
+    q_penalty_total_fill_regression = Param.Float(
+        60.0, "Penalty weight when total fills exceed OFF baseline"
     )
     q_penalty_admitted_preserve = Param.Float(
         2.0, "Penalty weight for accepted preserve admissions"
@@ -167,6 +176,9 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_penalty_data_fill = Param.Float(
         8.0, "Penalty weight for data-side L2 fills in preserved sets"
+    )
+    q_learning_fill_regression_guard = Param.Bool(
+        True, "Force next Q-learning action to OFF after total-fill regression"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"

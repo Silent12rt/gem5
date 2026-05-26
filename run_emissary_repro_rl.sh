@@ -61,13 +61,17 @@ RL_Q_PENALTY_QUOTA_EXCEEDED=${RL_Q_PENALTY_QUOTA_EXCEEDED:-0.0}
 RL_Q_PENALTY_SATURATION=${RL_Q_PENALTY_SATURATION:-0.0}
 RL_Q_REWARD_PRESERVE_HIT=${RL_Q_REWARD_PRESERVE_HIT:-0.05}
 RL_Q_REWARD_INST_FILL_REDUCTION=${RL_Q_REWARD_INST_FILL_REDUCTION:-4.0}
+RL_Q_REWARD_TOTAL_FILL_REDUCTION=${RL_Q_REWARD_TOTAL_FILL_REDUCTION:-4.0}
 RL_Q_PENALTY_INST_FILL_REGRESSION=${RL_Q_PENALTY_INST_FILL_REGRESSION:-50.0}
+RL_Q_PENALTY_DATA_FILL_REGRESSION=${RL_Q_PENALTY_DATA_FILL_REGRESSION:-80.0}
+RL_Q_PENALTY_TOTAL_FILL_REGRESSION=${RL_Q_PENALTY_TOTAL_FILL_REGRESSION:-60.0}
 RL_Q_PENALTY_ADMITTED_PRESERVE=${RL_Q_PENALTY_ADMITTED_PRESERVE:-2.0}
 RL_Q_PENALTY_ADMISSION_PRESSURE=${RL_Q_PENALTY_ADMISSION_PRESSURE:-0.05}
 RL_Q_PENALTY_PRESERVE_CLEAR=${RL_Q_PENALTY_PRESERVE_CLEAR:-2.0}
 RL_Q_PENALTY_PRESERVE_OCCUPANCY=${RL_Q_PENALTY_PRESERVE_OCCUPANCY:-3.0}
 RL_Q_PENALTY_INST_FILL=${RL_Q_PENALTY_INST_FILL:-0.0}
 RL_Q_PENALTY_DATA_FILL=${RL_Q_PENALTY_DATA_FILL:-8.0}
+RL_FILL_REGRESSION_GUARD=${RL_FILL_REGRESSION_GUARD:-1}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -176,6 +180,11 @@ run_paper_suite() {
 }
 
 run_rl_suite() {
+    local fill_guard_args=()
+    if [[ "${RL_FILL_REGRESSION_GUARD}" != "1" ]]; then
+        fill_guard_args+=(--q-learning-disable-fill-regression-guard)
+    fi
+
     local seed
     for seed in ${RL_SEEDS}; do
         run_emissary_case "rl/q_learning_seed_${seed}" \
@@ -199,13 +208,17 @@ run_rl_suite() {
             --q-penalty-saturation="${RL_Q_PENALTY_SATURATION}" \
             --q-reward-preserve-hit="${RL_Q_REWARD_PRESERVE_HIT}" \
             --q-reward-inst-fill-reduction="${RL_Q_REWARD_INST_FILL_REDUCTION}" \
+            --q-reward-total-fill-reduction="${RL_Q_REWARD_TOTAL_FILL_REDUCTION}" \
             --q-penalty-inst-fill-regression="${RL_Q_PENALTY_INST_FILL_REGRESSION}" \
+            --q-penalty-data-fill-regression="${RL_Q_PENALTY_DATA_FILL_REGRESSION}" \
+            --q-penalty-total-fill-regression="${RL_Q_PENALTY_TOTAL_FILL_REGRESSION}" \
             --q-penalty-admitted-preserve="${RL_Q_PENALTY_ADMITTED_PRESERVE}" \
             --q-penalty-admission-pressure="${RL_Q_PENALTY_ADMISSION_PRESSURE}" \
             --q-penalty-preserve-clear="${RL_Q_PENALTY_PRESERVE_CLEAR}" \
             --q-penalty-preserve-occupancy="${RL_Q_PENALTY_PRESERVE_OCCUPANCY}" \
             --q-penalty-inst-fill="${RL_Q_PENALTY_INST_FILL}" \
             --q-penalty-data-fill="${RL_Q_PENALTY_DATA_FILL}" \
+            "${fill_guard_args[@]}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \
             --emissary-require-iq-empty \
