@@ -111,6 +111,8 @@ class LRUEmissary : public Base
     double q_penalty_inst_fill;
     double q_penalty_data_fill;
     bool q_learning_fill_regression_guard;
+    bool q_learning_data_regression_guard;
+    int q_learning_bad_action_cooldown;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -126,6 +128,7 @@ class LRUEmissary : public Base
     double q_total_fill_off_baseline;
     std::vector<double> q_values;
     std::vector<QAction> q_actions;
+    std::vector<int> q_action_cooldowns;
     Random::RandomPtr q_rng;
     mutable uint64_t epoch_preserve_hits;
     mutable uint64_t epoch_admission_accepts;
@@ -163,6 +166,8 @@ class LRUEmissary : public Base
         statistics::Scalar qDataFillsPreservedSet;
         statistics::Scalar qInstFillBaselineUpdates;
         statistics::Scalar qFillRegressionGuardForces;
+        statistics::Scalar qBadActionCooldowns;
+        statistics::Scalar qCooldownActionSkips;
         statistics::Scalar preserveHits;
     } stats;
 
@@ -205,6 +210,8 @@ class LRUEmissary : public Base
         double saturatedPct, double preserveOccupancyPct,
         double preserveVictimPct, double preserveReusePerAdmission,
         double admissionAcceptPct) const;
+    bool qActionCoolingDown(int action) const;
+    void qTickActionCooldowns();
     int qChooseAction(int state);
     void qUpdate(
         int nextState, double reward, double saturatedPct,
@@ -236,7 +243,10 @@ class LRUEmissary : public Base
         double totalFillRegressionPenalty,
         double dataFillOffBaseline, double dataFillDelta,
         double totalFillOffBaseline, double totalFillDelta,
+        bool totalFillRegressionGuarded,
+        bool dataFillRegressionGuarded,
         bool fillRegressionGuarded,
+        int activeActionCooldown,
         double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,

@@ -364,6 +364,12 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_fill_regression_guard = (
                     not options.q_learning_disable_fill_regression_guard
                 )
+                system.l2.replacement_policy.q_learning_data_regression_guard = (
+                    not options.q_learning_disable_data_regression_guard
+                )
+                system.l2.replacement_policy.q_learning_bad_action_cooldown = (
+                    options.q_learning_bad_action_cooldown
+                )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard
                 )

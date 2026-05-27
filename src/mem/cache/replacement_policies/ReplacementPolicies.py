@@ -178,7 +178,13 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         8.0, "Penalty weight for data-side L2 fills in preserved sets"
     )
     q_learning_fill_regression_guard = Param.Bool(
-        True, "Force next Q-learning action to OFF after total-fill regression"
+        True, "Force next Q-learning action to OFF after fill regression"
+    )
+    q_learning_data_regression_guard = Param.Bool(
+        True, "Also force OFF when data-side fills exceed the OFF baseline"
+    )
+    q_learning_bad_action_cooldown = Param.Int(
+        8, "Epochs to suppress an action after it causes fill regression"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"

@@ -88,6 +88,8 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_penalty_inst_fill(p.q_penalty_inst_fill),
       q_penalty_data_fill(p.q_penalty_data_fill),
       q_learning_fill_regression_guard(p.q_learning_fill_regression_guard),
+      q_learning_data_regression_guard(p.q_learning_data_regression_guard),
+      q_learning_bad_action_cooldown(p.q_learning_bad_action_cooldown),
       q_learning_set_guard(p.q_learning_set_guard),
       q_learning_seed(p.q_learning_seed),
       q_num_actions(0),
@@ -134,6 +136,9 @@ LRUEmissary::LRUEmissary(const Params &p)
     }
     q_learning_inst_baseline_alpha = std::max(
         0.0, std::min(1.0, q_learning_inst_baseline_alpha));
+    if (q_learning_bad_action_cooldown < 0) {
+        q_learning_bad_action_cooldown = 0;
+    }
 
     const std::size_t actionCount = std::min(
         p.q_action_admission_rates.size(), p.q_action_preserve_ways.size());
@@ -159,6 +164,7 @@ LRUEmissary::LRUEmissary(const Params &p)
     q_learning_default_action = std::max(
         0, std::min(q_learning_default_action, q_num_actions - 1));
     q_values.assign(q_num_states * q_num_actions, 0.0);
+    q_action_cooldowns.assign(q_num_actions, 0);
     if (q_learning_preserve) {
         q_last_state = qState(0.0, 0.0, 0.0, 0.0, 0.0);
         q_last_action = q_learning_default_action;
@@ -719,20 +725,60 @@ LRUEmissary::qState(
         reuseBin) * 3 + admissionBin;
 }
 
+bool
+LRUEmissary::qActionCoolingDown(int action) const
+{
+    return action > 0 &&
+        action < static_cast<int>(q_action_cooldowns.size()) &&
+        q_action_cooldowns[action] > 0;
+}
+
+void
+LRUEmissary::qTickActionCooldowns()
+{
+    for (std::size_t action = 1; action < q_action_cooldowns.size();
+         action++) {
+        if (q_action_cooldowns[action] > 0) {
+            q_action_cooldowns[action]--;
+        }
+    }
+}
+
 int
 LRUEmissary::qChooseAction(int state)
 {
+    std::vector<int> candidates;
+    candidates.reserve(q_num_actions);
+    for (int action = 0; action < q_num_actions; action++) {
+        if (qActionCoolingDown(action)) {
+            stats.qCooldownActionSkips++;
+            continue;
+        }
+        candidates.push_back(action);
+    }
+    if (candidates.empty()) {
+        candidates.push_back(0);
+    }
+
     const double explore =
         static_cast<double>(q_rng->random<uint32_t>(0, 9999)) / 10000.0;
     if (explore < q_learning_epsilon) {
         stats.qLearningExplores++;
-        return q_rng->random<int>(0, q_num_actions - 1);
+        const int index = q_rng->random<int>(
+            0, static_cast<int>(candidates.size()) - 1);
+        return candidates[index];
     }
 
     stats.qLearningExploits++;
-    int bestAction = q_learning_default_action;
+    int bestAction = candidates.front();
+    for (const int action : candidates) {
+        if (action == q_learning_default_action) {
+            bestAction = action;
+            break;
+        }
+    }
     double bestValue = q_values[state * q_num_actions + bestAction];
-    for (int action = 0; action < q_num_actions; action++) {
+    for (const int action : candidates) {
         const double value = q_values[state * q_num_actions + action];
         if (value > bestValue) {
             bestValue = value;
@@ -763,11 +809,42 @@ LRUEmissary::qUpdate(
 {
     const int activeAction =
         q_has_last ? q_last_action : q_learning_default_action;
+    const bool activeOff =
+        qActionToAdmissionRate(activeAction) <= 0.0 ||
+        qActionToPreserveWays(activeAction) <= 0;
+    const bool totalFillRegressionGuarded =
+        q_learning_fill_regression_guard && q_has_fill_off_baseline &&
+        !activeOff && totalFillDelta < 0.0;
+    const bool dataFillRegressionGuarded =
+        q_learning_fill_regression_guard &&
+        q_learning_data_regression_guard && q_has_fill_off_baseline &&
+        !activeOff && dataFillDelta < 0.0;
+    const bool fillRegressionGuarded =
+        totalFillRegressionGuarded || dataFillRegressionGuarded;
+
+    int activeActionCooldown = 0;
+    if (fillRegressionGuarded &&
+        q_learning_bad_action_cooldown > 0 &&
+        activeAction > 0 &&
+        activeAction < static_cast<int>(q_action_cooldowns.size())) {
+        q_action_cooldowns[activeAction] = std::max(
+            q_action_cooldowns[activeAction],
+            q_learning_bad_action_cooldown);
+        activeActionCooldown = q_action_cooldowns[activeAction];
+        stats.qBadActionCooldowns++;
+    }
+
     if (q_has_last) {
         double nextBest = -std::numeric_limits<double>::infinity();
         for (int action = 0; action < q_num_actions; action++) {
+            if (qActionCoolingDown(action)) {
+                continue;
+            }
             nextBest = std::max(
                 nextBest, q_values[nextState * q_num_actions + action]);
+        }
+        if (nextBest == -std::numeric_limits<double>::infinity()) {
+            nextBest = q_values[nextState * q_num_actions];
         }
 
         double& oldValue = q_values[q_last_state * q_num_actions + q_last_action];
@@ -776,11 +853,8 @@ LRUEmissary::qUpdate(
         stats.qLearningUpdates++;
     }
 
-    bool fillRegressionGuarded = false;
     int nextAction = 0;
-    if (q_learning_fill_regression_guard && q_has_fill_off_baseline &&
-        totalFillDelta < 0.0) {
-        fillRegressionGuarded = true;
+    if (fillRegressionGuarded) {
         stats.qFillRegressionGuardForces++;
     } else {
         nextAction = qChooseAction(nextState);
@@ -797,7 +871,10 @@ LRUEmissary::qUpdate(
         dataFillRegressionPenalty, totalFillRegressionPenalty,
         dataFillOffBaseline, dataFillDelta,
         totalFillOffBaseline, totalFillDelta,
+        totalFillRegressionGuarded,
+        dataFillRegressionGuarded,
         fillRegressionGuarded,
+        activeActionCooldown,
         instFillPenalty, dataFillPenalty, preserveVictimPenalty,
         admittedPreservePenalty, admissionPressurePenalty,
         preserveClearPenalty, preserveOccupancyPenalty, quotaPenalty,
@@ -809,6 +886,7 @@ LRUEmissary::qUpdate(
     stats.qLearningActionSum +=
         static_cast<uint64_t>(qActionToAdmissionRate(nextAction) * 1000.0);
     stats.qLearningPreserveWaySum += nextPreserveWays;
+    qTickActionCooldowns();
 }
 
 void
@@ -825,7 +903,10 @@ LRUEmissary::qLogEpoch(
     double totalFillRegressionPenalty,
     double dataFillOffBaseline, double dataFillDelta,
     double totalFillOffBaseline, double totalFillDelta,
+    bool totalFillRegressionGuarded,
+    bool dataFillRegressionGuarded,
     bool fillRegressionGuarded,
+    int activeActionCooldown,
     double instFillPenalty, double dataFillPenalty,
     double preserveVictimPenalty, double admittedPreservePenalty,
     double admissionPressurePenalty, double preserveClearPenalty,
@@ -851,7 +932,9 @@ LRUEmissary::qLogEpoch(
              << "total_fill_regression_penalty,"
              << "data_fill_off_baseline,data_fill_delta,"
              << "total_fill_off_baseline,total_fill_delta,"
-             << "fill_regression_guard,"
+             << "total_fill_regression_guard,"
+             << "data_fill_regression_guard,"
+             << "fill_regression_guard,active_action_cooldown,"
              << "inst_fill_penalty,data_fill_penalty,"
              << "preserve_victim_penalty,admitted_preserve_penalty,"
              << "admission_pressure_penalty,preserve_clear_penalty,"
@@ -882,7 +965,10 @@ LRUEmissary::qLogEpoch(
          << "," << totalFillRegressionPenalty << ","
          << dataFillOffBaseline << "," << dataFillDelta << ","
          << totalFillOffBaseline << "," << totalFillDelta << ","
+         << (totalFillRegressionGuarded ? 1 : 0) << ","
+         << (dataFillRegressionGuarded ? 1 : 0) << ","
          << (fillRegressionGuarded ? 1 : 0) << ","
+         << activeActionCooldown << ","
          << instFillPenalty << ","
          << dataFillPenalty << "," << preserveVictimPenalty << ","
          << admittedPreservePenalty << "," << admissionPressurePenalty << ","
@@ -947,6 +1033,10 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of OFF-action epochs used to update I-fill baseline"),
     ADD_STAT(qFillRegressionGuardForces, statistics::units::Count::get(),
              "Number of Q-learning actions forced to OFF by fill regression guard"),
+    ADD_STAT(qBadActionCooldowns, statistics::units::Count::get(),
+             "Number of Q-learning actions placed on regression cooldown"),
+    ADD_STAT(qCooldownActionSkips, statistics::units::Count::get(),
+             "Number of cooled-down Q-learning actions skipped during selection"),
     ADD_STAT(preserveHits, statistics::units::Count::get(),
              "Number of cache hits on preserved lines")
 {

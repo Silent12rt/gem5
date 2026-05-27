@@ -72,6 +72,8 @@ RL_Q_PENALTY_PRESERVE_OCCUPANCY=${RL_Q_PENALTY_PRESERVE_OCCUPANCY:-3.0}
 RL_Q_PENALTY_INST_FILL=${RL_Q_PENALTY_INST_FILL:-0.0}
 RL_Q_PENALTY_DATA_FILL=${RL_Q_PENALTY_DATA_FILL:-8.0}
 RL_FILL_REGRESSION_GUARD=${RL_FILL_REGRESSION_GUARD:-1}
+RL_DATA_REGRESSION_GUARD=${RL_DATA_REGRESSION_GUARD:-1}
+RL_BAD_ACTION_COOLDOWN=${RL_BAD_ACTION_COOLDOWN:-8}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -184,6 +186,10 @@ run_rl_suite() {
     if [[ "${RL_FILL_REGRESSION_GUARD}" != "1" ]]; then
         fill_guard_args+=(--q-learning-disable-fill-regression-guard)
     fi
+    local data_guard_args=()
+    if [[ "${RL_DATA_REGRESSION_GUARD}" != "1" ]]; then
+        data_guard_args+=(--q-learning-disable-data-regression-guard)
+    fi
 
     local seed
     for seed in ${RL_SEEDS}; do
@@ -218,7 +224,9 @@ run_rl_suite() {
             --q-penalty-preserve-occupancy="${RL_Q_PENALTY_PRESERVE_OCCUPANCY}" \
             --q-penalty-inst-fill="${RL_Q_PENALTY_INST_FILL}" \
             --q-penalty-data-fill="${RL_Q_PENALTY_DATA_FILL}" \
+            --q-learning-bad-action-cooldown="${RL_BAD_ACTION_COOLDOWN}" \
             "${fill_guard_args[@]}" \
+            "${data_guard_args[@]}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \
             --emissary-require-iq-empty \

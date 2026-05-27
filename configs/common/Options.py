@@ -260,6 +260,12 @@ def addNoISAOptions(parser):
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--q-learning-disable-data-regression-guard",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument("--q-learning-bad-action-cooldown", type=int, default=8)
     parser.add_argument("--q-learning-disable-set-guard", action="store_true", default=False)
     parser.add_argument("--q-learning-seed", type=int, default=0)
 
