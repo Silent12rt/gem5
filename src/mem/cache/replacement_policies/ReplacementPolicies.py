@@ -186,6 +186,27 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_bad_action_cooldown = Param.Int(
         8, "Epochs to suppress an action after it causes fill regression"
     )
+    q_learning_action_quality_gate = Param.Bool(
+        True, "Suppress actions with persistently negative quality"
+    )
+    q_learning_action_quality_alpha = Param.Float(
+        0.25, "EWMA alpha for action quality updates"
+    )
+    q_learning_min_action_quality = Param.Float(
+        -0.5, "Minimum action quality before an action is suppressed"
+    )
+    q_learning_action_quality_recovery = Param.Float(
+        0.05, "OFF-epoch recovery step for negative action quality"
+    )
+    q_learning_action_quality_sample_cap = Param.Float(
+        8.0, "Absolute cap for per-epoch action quality samples"
+    )
+    q_learning_quality_data_weight = Param.Float(
+        2.0, "Action quality weight for data-fill regression"
+    )
+    q_learning_quality_total_weight = Param.Float(
+        1.0, "Action quality weight for total-fill regression"
+    )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"
     )

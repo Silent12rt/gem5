@@ -74,6 +74,13 @@ RL_Q_PENALTY_DATA_FILL=${RL_Q_PENALTY_DATA_FILL:-8.0}
 RL_FILL_REGRESSION_GUARD=${RL_FILL_REGRESSION_GUARD:-1}
 RL_DATA_REGRESSION_GUARD=${RL_DATA_REGRESSION_GUARD:-1}
 RL_BAD_ACTION_COOLDOWN=${RL_BAD_ACTION_COOLDOWN:-8}
+RL_ACTION_QUALITY_GATE=${RL_ACTION_QUALITY_GATE:-1}
+RL_ACTION_QUALITY_ALPHA=${RL_ACTION_QUALITY_ALPHA:-0.25}
+RL_MIN_ACTION_QUALITY=${RL_MIN_ACTION_QUALITY:--0.5}
+RL_ACTION_QUALITY_RECOVERY=${RL_ACTION_QUALITY_RECOVERY:-0.05}
+RL_ACTION_QUALITY_SAMPLE_CAP=${RL_ACTION_QUALITY_SAMPLE_CAP:-8.0}
+RL_QUALITY_DATA_WEIGHT=${RL_QUALITY_DATA_WEIGHT:-2.0}
+RL_QUALITY_TOTAL_WEIGHT=${RL_QUALITY_TOTAL_WEIGHT:-1.0}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -190,6 +197,10 @@ run_rl_suite() {
     if [[ "${RL_DATA_REGRESSION_GUARD}" != "1" ]]; then
         data_guard_args+=(--q-learning-disable-data-regression-guard)
     fi
+    local quality_gate_args=()
+    if [[ "${RL_ACTION_QUALITY_GATE}" != "1" ]]; then
+        quality_gate_args+=(--q-learning-disable-action-quality-gate)
+    fi
 
     local seed
     for seed in ${RL_SEEDS}; do
@@ -225,8 +236,15 @@ run_rl_suite() {
             --q-penalty-inst-fill="${RL_Q_PENALTY_INST_FILL}" \
             --q-penalty-data-fill="${RL_Q_PENALTY_DATA_FILL}" \
             --q-learning-bad-action-cooldown="${RL_BAD_ACTION_COOLDOWN}" \
+            --q-learning-action-quality-alpha="${RL_ACTION_QUALITY_ALPHA}" \
+            --q-learning-min-action-quality="${RL_MIN_ACTION_QUALITY}" \
+            --q-learning-action-quality-recovery="${RL_ACTION_QUALITY_RECOVERY}" \
+            --q-learning-action-quality-sample-cap="${RL_ACTION_QUALITY_SAMPLE_CAP}" \
+            --q-learning-quality-data-weight="${RL_QUALITY_DATA_WEIGHT}" \
+            --q-learning-quality-total-weight="${RL_QUALITY_TOTAL_WEIGHT}" \
             "${fill_guard_args[@]}" \
             "${data_guard_args[@]}" \
+            "${quality_gate_args[@]}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \
             --emissary-require-iq-empty \

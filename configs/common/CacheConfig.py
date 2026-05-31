@@ -370,6 +370,27 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_bad_action_cooldown = (
                     options.q_learning_bad_action_cooldown
                 )
+                system.l2.replacement_policy.q_learning_action_quality_gate = (
+                    not options.q_learning_disable_action_quality_gate
+                )
+                system.l2.replacement_policy.q_learning_action_quality_alpha = (
+                    options.q_learning_action_quality_alpha
+                )
+                system.l2.replacement_policy.q_learning_min_action_quality = (
+                    options.q_learning_min_action_quality
+                )
+                system.l2.replacement_policy.q_learning_action_quality_recovery = (
+                    options.q_learning_action_quality_recovery
+                )
+                system.l2.replacement_policy.q_learning_action_quality_sample_cap = (
+                    options.q_learning_action_quality_sample_cap
+                )
+                system.l2.replacement_policy.q_learning_quality_data_weight = (
+                    options.q_learning_quality_data_weight
+                )
+                system.l2.replacement_policy.q_learning_quality_total_weight = (
+                    options.q_learning_quality_total_weight
+                )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard
                 )

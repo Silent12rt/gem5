@@ -113,6 +113,13 @@ class LRUEmissary : public Base
     bool q_learning_fill_regression_guard;
     bool q_learning_data_regression_guard;
     int q_learning_bad_action_cooldown;
+    bool q_learning_action_quality_gate;
+    double q_learning_action_quality_alpha;
+    double q_learning_min_action_quality;
+    double q_learning_action_quality_recovery;
+    double q_learning_action_quality_sample_cap;
+    double q_learning_quality_data_weight;
+    double q_learning_quality_total_weight;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -129,6 +136,7 @@ class LRUEmissary : public Base
     std::vector<double> q_values;
     std::vector<QAction> q_actions;
     std::vector<int> q_action_cooldowns;
+    std::vector<double> q_action_quality;
     Random::RandomPtr q_rng;
     mutable uint64_t epoch_preserve_hits;
     mutable uint64_t epoch_admission_accepts;
@@ -168,6 +176,11 @@ class LRUEmissary : public Base
         statistics::Scalar qFillRegressionGuardForces;
         statistics::Scalar qBadActionCooldowns;
         statistics::Scalar qCooldownActionSkips;
+        statistics::Scalar qActionQualityUpdates;
+        statistics::Scalar qActionQualityRecoveries;
+        statistics::Scalar qQualityActionBlocks;
+        statistics::Scalar qQualityActionForces;
+        statistics::Scalar qQualityActionSkips;
         statistics::Scalar preserveHits;
     } stats;
 
@@ -211,7 +224,9 @@ class LRUEmissary : public Base
         double preserveVictimPct, double preserveReusePerAdmission,
         double admissionAcceptPct) const;
     bool qActionCoolingDown(int action) const;
+    bool qActionQualityBlocked(int action) const;
     void qTickActionCooldowns();
+    bool qRecoverActionQuality();
     int qChooseAction(int state);
     void qUpdate(
         int nextState, double reward, double saturatedPct,
@@ -247,6 +262,12 @@ class LRUEmissary : public Base
         bool dataFillRegressionGuarded,
         bool fillRegressionGuarded,
         int activeActionCooldown,
+        double actionQualitySample,
+        double actionQualityBefore,
+        double actionQualityAfter,
+        bool actionQualityUpdated,
+        bool actionQualityBlocked,
+        bool actionQualityRecovered,
         double instFillPenalty, double dataFillPenalty,
         double preserveVictimPenalty, double admittedPreservePenalty,
         double admissionPressurePenalty, double preserveClearPenalty,
