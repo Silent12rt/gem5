@@ -230,7 +230,7 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-learning-preserve", action="store_true", default=False)
     parser.add_argument("--q-learning-alpha", type=float, default=0.2)
     parser.add_argument("--q-learning-gamma", type=float, default=0.8)
-    parser.add_argument("--q-learning-epsilon", type=float, default=0.02)
+    parser.add_argument("--q-learning-epsilon", type=float, default=0.005)
     parser.add_argument("--q-learning-target-saturation", type=float, default=10.0)
     parser.add_argument("--q-learning-target-occupancy", type=float, default=1.5)
     parser.add_argument("--q-learning-min-preserve-ways", type=int, default=0)
@@ -265,16 +265,16 @@ def addNoISAOptions(parser):
         action="store_true",
         default=False,
     )
-    parser.add_argument("--q-learning-bad-action-cooldown", type=int, default=8)
+    parser.add_argument("--q-learning-bad-action-cooldown", type=int, default=16)
     parser.add_argument(
         "--q-learning-disable-action-quality-gate",
         action="store_true",
         default=False,
     )
-    parser.add_argument("--q-learning-action-quality-alpha", type=float, default=0.25)
-    parser.add_argument("--q-learning-min-action-quality", type=float, default=-0.5)
+    parser.add_argument("--q-learning-action-quality-alpha", type=float, default=0.35)
+    parser.add_argument("--q-learning-min-action-quality", type=float, default=-0.2)
     parser.add_argument(
-        "--q-learning-action-quality-recovery", type=float, default=0.05
+        "--q-learning-action-quality-recovery", type=float, default=0.02
     )
     parser.add_argument(
         "--q-learning-action-quality-sample-cap", type=float, default=8.0
