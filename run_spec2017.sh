@@ -182,6 +182,8 @@ export RL_Q_PENALTY_INST_FILL="${RL_Q_PENALTY_INST_FILL:-0.0}"
 export RL_Q_PENALTY_DATA_FILL="${RL_Q_PENALTY_DATA_FILL:-8.0}"
 export RL_FILL_REGRESSION_GUARD="${RL_FILL_REGRESSION_GUARD:-1}"
 export RL_DATA_REGRESSION_GUARD="${RL_DATA_REGRESSION_GUARD:-1}"
+export RL_DATA_POLLUTION_GUARD="${RL_DATA_POLLUTION_GUARD:-1}"
+export RL_DATA_POLLUTION_THRESHOLD="${RL_DATA_POLLUTION_THRESHOLD:-0}"
 export RL_BAD_ACTION_COOLDOWN="${RL_BAD_ACTION_COOLDOWN:-12}"
 export RL_ACTION_QUALITY_GATE="${RL_ACTION_QUALITY_GATE:-1}"
 export RL_ACTION_QUALITY_ALPHA="${RL_ACTION_QUALITY_ALPHA:-0.35}"
@@ -190,6 +192,7 @@ export RL_ACTION_QUALITY_RECOVERY="${RL_ACTION_QUALITY_RECOVERY:-0.03}"
 export RL_ACTION_QUALITY_SAMPLE_CAP="${RL_ACTION_QUALITY_SAMPLE_CAP:-8.0}"
 export RL_QUALITY_DATA_WEIGHT="${RL_QUALITY_DATA_WEIGHT:-2.0}"
 export RL_QUALITY_TOTAL_WEIGHT="${RL_QUALITY_TOTAL_WEIGHT:-1.0}"
+export RL_QUALITY_PRESERVED_DATA_WEIGHT="${RL_QUALITY_PRESERVED_DATA_WEIGHT:-32.0}"
 
 if [[ ! -f "${RUNNER}" ]]; then
     echo "runner not found: ${RUNNER}" >&2
@@ -212,7 +215,7 @@ echo "  L3: USE_L3=${USE_L3}, ${L3_SIZE}, assoc ${L3_ASSOC}, rp ${L3_RP}"
 echo "  FDIP: USE_FDIP=${USE_FDIP}"
 echo "  RL actions: rates=${RL_ACTION_ADMISSION_RATES}, ways=${RL_ACTION_PRESERVE_WAYS}, default=${RL_DEFAULT_ACTION}"
 echo "  RL targets: saturation=${RL_TARGET_SATURATION}, occupancy=${RL_TARGET_OCCUPANCY}"
-echo "  RL_Q: preserve_hit=${RL_Q_REWARD_PRESERVE_HIT}, inst_reduction_reward=${RL_Q_REWARD_INST_FILL_REDUCTION}, total_reduction_reward=${RL_Q_REWARD_TOTAL_FILL_REDUCTION}, inst_regression_penalty=${RL_Q_PENALTY_INST_FILL_REGRESSION}, data_regression_penalty=${RL_Q_PENALTY_DATA_FILL_REGRESSION}, total_regression_penalty=${RL_Q_PENALTY_TOTAL_FILL_REGRESSION}, admitted_penalty=${RL_Q_PENALTY_ADMITTED_PRESERVE}, pressure_penalty=${RL_Q_PENALTY_ADMISSION_PRESSURE}, clear_penalty=${RL_Q_PENALTY_PRESERVE_CLEAR}, occupancy_penalty=${RL_Q_PENALTY_PRESERVE_OCCUPANCY}, inst_fill_penalty=${RL_Q_PENALTY_INST_FILL}, data_fill_penalty=${RL_Q_PENALTY_DATA_FILL}, fill_guard=${RL_FILL_REGRESSION_GUARD}, data_guard=${RL_DATA_REGRESSION_GUARD}, bad_action_cooldown=${RL_BAD_ACTION_COOLDOWN}, quality_gate=${RL_ACTION_QUALITY_GATE}, min_quality=${RL_MIN_ACTION_QUALITY}, quality_alpha=${RL_ACTION_QUALITY_ALPHA}, quality_recovery=${RL_ACTION_QUALITY_RECOVERY}, quality_weights=data:${RL_QUALITY_DATA_WEIGHT}/total:${RL_QUALITY_TOTAL_WEIGHT}, reuse_cap=${RL_REUSE_CAP}, inst_baseline_alpha=${RL_INST_BASELINE_ALPHA}"
+echo "  RL_Q: preserve_hit=${RL_Q_REWARD_PRESERVE_HIT}, inst_reduction_reward=${RL_Q_REWARD_INST_FILL_REDUCTION}, total_reduction_reward=${RL_Q_REWARD_TOTAL_FILL_REDUCTION}, inst_regression_penalty=${RL_Q_PENALTY_INST_FILL_REGRESSION}, data_regression_penalty=${RL_Q_PENALTY_DATA_FILL_REGRESSION}, total_regression_penalty=${RL_Q_PENALTY_TOTAL_FILL_REGRESSION}, admitted_penalty=${RL_Q_PENALTY_ADMITTED_PRESERVE}, pressure_penalty=${RL_Q_PENALTY_ADMISSION_PRESSURE}, clear_penalty=${RL_Q_PENALTY_PRESERVE_CLEAR}, occupancy_penalty=${RL_Q_PENALTY_PRESERVE_OCCUPANCY}, inst_fill_penalty=${RL_Q_PENALTY_INST_FILL}, data_fill_penalty=${RL_Q_PENALTY_DATA_FILL}, fill_guard=${RL_FILL_REGRESSION_GUARD}, data_guard=${RL_DATA_REGRESSION_GUARD}, data_pollution_guard=${RL_DATA_POLLUTION_GUARD}, data_pollution_threshold=${RL_DATA_POLLUTION_THRESHOLD}, bad_action_cooldown=${RL_BAD_ACTION_COOLDOWN}, quality_gate=${RL_ACTION_QUALITY_GATE}, min_quality=${RL_MIN_ACTION_QUALITY}, quality_alpha=${RL_ACTION_QUALITY_ALPHA}, quality_recovery=${RL_ACTION_QUALITY_RECOVERY}, quality_weights=data:${RL_QUALITY_DATA_WEIGHT}/total:${RL_QUALITY_TOTAL_WEIGHT}/preserved_data:${RL_QUALITY_PRESERVED_DATA_WEIGHT}, reuse_cap=${RL_REUSE_CAP}, inst_baseline_alpha=${RL_INST_BASELINE_ALPHA}"
 if [[ -n "${MAXINSTS}" ]]; then
     echo "  MAXINSTS: ${MAXINSTS}"
 fi

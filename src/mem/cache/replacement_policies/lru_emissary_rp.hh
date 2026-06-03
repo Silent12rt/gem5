@@ -112,6 +112,8 @@ class LRUEmissary : public Base
     double q_penalty_data_fill;
     bool q_learning_fill_regression_guard;
     bool q_learning_data_regression_guard;
+    bool q_learning_data_pollution_guard;
+    int q_learning_data_pollution_threshold;
     int q_learning_bad_action_cooldown;
     bool q_learning_action_quality_gate;
     double q_learning_action_quality_alpha;
@@ -120,6 +122,7 @@ class LRUEmissary : public Base
     double q_learning_action_quality_sample_cap;
     double q_learning_quality_data_weight;
     double q_learning_quality_total_weight;
+    double q_learning_quality_preserved_data_weight;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -174,6 +177,7 @@ class LRUEmissary : public Base
         statistics::Scalar qDataFillsPreservedSet;
         statistics::Scalar qInstFillBaselineUpdates;
         statistics::Scalar qFillRegressionGuardForces;
+        statistics::Scalar qDataPollutionGuardForces;
         statistics::Scalar qBadActionCooldowns;
         statistics::Scalar qCooldownActionSkips;
         statistics::Scalar qActionQualityUpdates;
@@ -261,7 +265,9 @@ class LRUEmissary : public Base
         bool totalFillRegressionGuarded,
         bool dataFillRegressionGuarded,
         bool fillRegressionGuarded,
+        bool dataPollutionGuarded,
         int activeActionCooldown,
+        double dataPollutionQualityPenalty,
         double actionQualitySample,
         double actionQualityBefore,
         double actionQualityAfter,

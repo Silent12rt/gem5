@@ -89,6 +89,9 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_penalty_data_fill(p.q_penalty_data_fill),
       q_learning_fill_regression_guard(p.q_learning_fill_regression_guard),
       q_learning_data_regression_guard(p.q_learning_data_regression_guard),
+      q_learning_data_pollution_guard(p.q_learning_data_pollution_guard),
+      q_learning_data_pollution_threshold(
+          p.q_learning_data_pollution_threshold),
       q_learning_bad_action_cooldown(p.q_learning_bad_action_cooldown),
       q_learning_action_quality_gate(p.q_learning_action_quality_gate),
       q_learning_action_quality_alpha(p.q_learning_action_quality_alpha),
@@ -98,6 +101,8 @@ LRUEmissary::LRUEmissary(const Params &p)
           p.q_learning_action_quality_sample_cap),
       q_learning_quality_data_weight(p.q_learning_quality_data_weight),
       q_learning_quality_total_weight(p.q_learning_quality_total_weight),
+      q_learning_quality_preserved_data_weight(
+          p.q_learning_quality_preserved_data_weight),
       q_learning_set_guard(p.q_learning_set_guard),
       q_learning_seed(p.q_learning_seed),
       q_num_actions(0),
@@ -147,12 +152,17 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_learning_bad_action_cooldown < 0) {
         q_learning_bad_action_cooldown = 0;
     }
+    if (q_learning_data_pollution_threshold < 0) {
+        q_learning_data_pollution_threshold = 0;
+    }
     q_learning_action_quality_alpha = std::max(
         0.0, std::min(1.0, q_learning_action_quality_alpha));
     q_learning_action_quality_recovery =
         std::max(0.0, q_learning_action_quality_recovery);
     q_learning_action_quality_sample_cap =
         std::max(0.0, q_learning_action_quality_sample_cap);
+    q_learning_quality_preserved_data_weight =
+        std::max(0.0, q_learning_quality_preserved_data_weight);
 
     const std::size_t actionCount = std::min(
         p.q_action_admission_rates.size(), p.q_action_preserve_ways.size());
@@ -871,9 +881,18 @@ LRUEmissary::qUpdate(
         !activeOff && dataFillDelta < 0.0;
     const bool fillRegressionGuarded =
         totalFillRegressionGuarded || dataFillRegressionGuarded;
+    const bool dataPollutionGuarded =
+        q_learning_data_pollution_guard && !activeOff &&
+        epoch_data_fills_preserved_set >
+            static_cast<uint64_t>(q_learning_data_pollution_threshold);
+    const bool guardForced =
+        fillRegressionGuarded || dataPollutionGuarded;
+    const double dataPollutionQualityPenalty =
+        q_learning_quality_preserved_data_weight *
+            (static_cast<double>(epoch_data_fills_preserved_set) / 1000.0);
 
     int activeActionCooldown = 0;
-    if (fillRegressionGuarded &&
+    if (guardForced &&
         q_learning_bad_action_cooldown > 0 &&
         activeAction > 0 &&
         activeAction < static_cast<int>(q_action_cooldowns.size())) {
@@ -909,7 +928,8 @@ LRUEmissary::qUpdate(
                 std::min(0.0, dataFillDelta / 1000.0) +
             q_learning_quality_total_weight *
                 std::min(0.0, totalFillDelta / 1000.0);
-        actionQualitySample = reward + fillQuality;
+        actionQualitySample =
+            reward + fillQuality - dataPollutionQualityPenalty;
         if (q_learning_action_quality_sample_cap > 0.0) {
             actionQualitySample = std::max(
                 -q_learning_action_quality_sample_cap,
@@ -955,10 +975,13 @@ LRUEmissary::qUpdate(
     if (fillRegressionGuarded) {
         stats.qFillRegressionGuardForces++;
     }
+    if (dataPollutionGuarded) {
+        stats.qDataPollutionGuardForces++;
+    }
     if (actionQualityBlocked) {
         stats.qQualityActionForces++;
     }
-    if (fillRegressionGuarded || actionQualityBlocked) {
+    if (guardForced || actionQualityBlocked) {
         nextAction = 0;
     } else {
         nextAction = qChooseAction(nextState);
@@ -978,7 +1001,9 @@ LRUEmissary::qUpdate(
         totalFillRegressionGuarded,
         dataFillRegressionGuarded,
         fillRegressionGuarded,
+        dataPollutionGuarded,
         activeActionCooldown,
+        dataPollutionQualityPenalty,
         actionQualitySample,
         actionQualityBefore,
         actionQualityAfter,
@@ -1016,7 +1041,9 @@ LRUEmissary::qLogEpoch(
     bool totalFillRegressionGuarded,
     bool dataFillRegressionGuarded,
     bool fillRegressionGuarded,
+    bool dataPollutionGuarded,
     int activeActionCooldown,
+    double dataPollutionQualityPenalty,
     double actionQualitySample,
     double actionQualityBefore,
     double actionQualityAfter,
@@ -1050,7 +1077,9 @@ LRUEmissary::qLogEpoch(
              << "total_fill_off_baseline,total_fill_delta,"
              << "total_fill_regression_guard,"
              << "data_fill_regression_guard,"
-             << "fill_regression_guard,active_action_cooldown,"
+             << "fill_regression_guard,data_pollution_guard,"
+             << "active_action_cooldown,"
+             << "data_pollution_quality_penalty,"
              << "action_quality_sample,action_quality_before,"
              << "action_quality_after,action_quality_updated,"
              << "action_quality_blocked,action_quality_recovered,"
@@ -1087,7 +1116,9 @@ LRUEmissary::qLogEpoch(
          << (totalFillRegressionGuarded ? 1 : 0) << ","
          << (dataFillRegressionGuarded ? 1 : 0) << ","
          << (fillRegressionGuarded ? 1 : 0) << ","
+         << (dataPollutionGuarded ? 1 : 0) << ","
          << activeActionCooldown << ","
+         << dataPollutionQualityPenalty << ","
          << actionQualitySample << "," << actionQualityBefore << ","
          << actionQualityAfter << ","
          << (actionQualityUpdated ? 1 : 0) << ","
@@ -1157,6 +1188,8 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of OFF-action epochs used to update I-fill baseline"),
     ADD_STAT(qFillRegressionGuardForces, statistics::units::Count::get(),
              "Number of Q-learning actions forced to OFF by fill regression guard"),
+    ADD_STAT(qDataPollutionGuardForces, statistics::units::Count::get(),
+             "Number of Q-learning actions forced to OFF by data pollution guard"),
     ADD_STAT(qBadActionCooldowns, statistics::units::Count::get(),
              "Number of Q-learning actions placed on regression cooldown"),
     ADD_STAT(qCooldownActionSkips, statistics::units::Count::get(),

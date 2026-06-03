@@ -183,6 +183,14 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_data_regression_guard = Param.Bool(
         True, "Also force OFF when data-side fills exceed the OFF baseline"
     )
+    q_learning_data_pollution_guard = Param.Bool(
+        True,
+        "Force OFF when data fills occur in sets currently holding preserved lines",
+    )
+    q_learning_data_pollution_threshold = Param.Int(
+        0,
+        "Minimum per-epoch data fills in preserved sets before pollution guard fires",
+    )
     q_learning_bad_action_cooldown = Param.Int(
         12, "Epochs to suppress an action after it causes fill regression"
     )
@@ -206,6 +214,9 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_quality_total_weight = Param.Float(
         1.0, "Action quality weight for total-fill regression"
+    )
+    q_learning_quality_preserved_data_weight = Param.Float(
+        32.0, "Action quality penalty weight for data fills in preserved sets"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"

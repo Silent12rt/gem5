@@ -367,6 +367,12 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_data_regression_guard = (
                     not options.q_learning_disable_data_regression_guard
                 )
+                system.l2.replacement_policy.q_learning_data_pollution_guard = (
+                    not options.q_learning_disable_data_pollution_guard
+                )
+                system.l2.replacement_policy.q_learning_data_pollution_threshold = (
+                    max(0, int(options.q_learning_data_pollution_threshold))
+                )
                 system.l2.replacement_policy.q_learning_bad_action_cooldown = (
                     options.q_learning_bad_action_cooldown
                 )
@@ -390,6 +396,9 @@ def config_cache(options, system):
                 )
                 system.l2.replacement_policy.q_learning_quality_total_weight = (
                     options.q_learning_quality_total_weight
+                )
+                system.l2.replacement_policy.q_learning_quality_preserved_data_weight = (
+                    options.q_learning_quality_preserved_data_weight
                 )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard
