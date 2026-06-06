@@ -92,6 +92,10 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_learning_data_pollution_guard(p.q_learning_data_pollution_guard),
       q_learning_data_pollution_threshold(
           p.q_learning_data_pollution_threshold),
+      q_learning_set_data_pollution_filter(
+          p.q_learning_set_data_pollution_filter),
+      q_learning_set_data_pollution_cooldown(
+          p.q_learning_set_data_pollution_cooldown),
       q_learning_bad_action_cooldown(p.q_learning_bad_action_cooldown),
       q_learning_action_quality_gate(p.q_learning_action_quality_gate),
       q_learning_action_quality_alpha(p.q_learning_action_quality_alpha),
@@ -129,6 +133,8 @@ LRUEmissary::LRUEmissary(const Params &p)
       epoch_inst_fills(0),
       epoch_data_fills(0),
       epoch_data_fills_preserved_set(0),
+      epoch_set_data_pollution_marks(0),
+      epoch_set_data_pollution_rejects(0),
       indexingPolicy(nullptr),
       stats(this)
 {
@@ -154,6 +160,9 @@ LRUEmissary::LRUEmissary(const Params &p)
     }
     if (q_learning_data_pollution_threshold < 0) {
         q_learning_data_pollution_threshold = 0;
+    }
+    if (q_learning_set_data_pollution_cooldown < 0) {
+        q_learning_set_data_pollution_cooldown = 0;
     }
     q_learning_action_quality_alpha = std::max(
         0.0, std::min(1.0, q_learning_action_quality_alpha));
@@ -279,6 +288,7 @@ LRUEmissary::reset(
             if (repl_data->blk && countSetPreserves(repl_data->blk) > 0) {
                 stats.qDataFillsPreservedSet++;
                 epoch_data_fills_preserved_set++;
+                qMarkSetDataPolluted(repl_data->blk);
             }
         }
     }
@@ -683,6 +693,52 @@ LRUEmissary::countSetPreserves(CacheBlk *blk) const
 }
 
 void
+LRUEmissary::qEnsureSetDataPollutionState()
+{
+    if (numSets <= 0) {
+        return;
+    }
+    const auto sets = static_cast<std::size_t>(numSets);
+    if (q_set_data_pollution_cooldowns.size() != sets) {
+        q_set_data_pollution_cooldowns.assign(sets, 0);
+    }
+}
+
+void
+LRUEmissary::qMarkSetDataPolluted(CacheBlk *blk)
+{
+    if (!q_learning_set_data_pollution_filter ||
+        q_learning_set_data_pollution_cooldown <= 0 || !blk) {
+        return;
+    }
+
+    qEnsureSetDataPollutionState();
+    const auto set = static_cast<std::size_t>(blk->getSet());
+    if (set >= q_set_data_pollution_cooldowns.size()) {
+        return;
+    }
+
+    q_set_data_pollution_cooldowns[set] = std::max(
+        q_set_data_pollution_cooldowns[set],
+        q_learning_set_data_pollution_cooldown);
+    stats.qSetDataPollutionMarks++;
+    epoch_set_data_pollution_marks++;
+}
+
+bool
+LRUEmissary::qSetDataPollutionBlocked(CacheBlk *blk) const
+{
+    if (!q_learning_set_data_pollution_filter || !blk ||
+        q_set_data_pollution_cooldowns.empty()) {
+        return false;
+    }
+
+    const auto set = static_cast<std::size_t>(blk->getSet());
+    return set < q_set_data_pollution_cooldowns.size() &&
+        q_set_data_pollution_cooldowns[set] > 0;
+}
+
+void
 LRUEmissary::qApplyAdmission(
     const std::shared_ptr<ReplacementData>& replacement_data,
     const PacketPtr pkt) const
@@ -710,6 +766,15 @@ LRUEmissary::qApplyAdmission(
         stats.qAdmissionRejects++;
         stats.qAdmissionGuardRejects++;
         epoch_admission_rejects++;
+        return;
+    }
+
+    if (qSetDataPollutionBlocked(repl_data->blk)) {
+        pkt->setPreserve(false);
+        stats.qAdmissionRejects++;
+        stats.qSetDataPollutionRejects++;
+        epoch_admission_rejects++;
+        epoch_set_data_pollution_rejects++;
         return;
     }
 
@@ -774,6 +839,11 @@ LRUEmissary::qTickActionCooldowns()
          action++) {
         if (q_action_cooldowns[action] > 0) {
             q_action_cooldowns[action]--;
+        }
+    }
+    for (auto& cooldown : q_set_data_pollution_cooldowns) {
+        if (cooldown > 0) {
+            cooldown--;
         }
     }
 }
@@ -1066,6 +1136,7 @@ LRUEmissary::qLogEpoch(
              << "preserve_victims,non_preserve_victims,preserve_hits,"
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
              << "admission_accepts,admission_rejects,admission_accept_pct,"
+             << "set_data_pollution_marks,set_data_pollution_rejects,"
              << "preserve_reuse_per_admission,preserve_clears,"
              << "quota_exceeded_sets,"
              << "reuse_reward,non_preserve_victim_reward,"
@@ -1103,6 +1174,8 @@ LRUEmissary::qLogEpoch(
          << "," << epoch_data_fills_preserved_set
          << "," << epoch_admission_accepts << ","
          << epoch_admission_rejects << "," << admissionAcceptPct
+         << "," << epoch_set_data_pollution_marks
+         << "," << epoch_set_data_pollution_rejects
          << "," << preserveReusePerAdmission << ","
          << epoch_preserve_clears << "," << epoch_quota_exceeded_sets
          << "," << reuseReward << ","
@@ -1144,6 +1217,8 @@ LRUEmissary::resetEpochCounters()
     epoch_inst_fills = 0;
     epoch_data_fills = 0;
     epoch_data_fills_preserved_set = 0;
+    epoch_set_data_pollution_marks = 0;
+    epoch_set_data_pollution_rejects = 0;
 }
 
 LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
@@ -1190,6 +1265,10 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of Q-learning actions forced to OFF by fill regression guard"),
     ADD_STAT(qDataPollutionGuardForces, statistics::units::Count::get(),
              "Number of Q-learning actions forced to OFF by data pollution guard"),
+    ADD_STAT(qSetDataPollutionMarks, statistics::units::Count::get(),
+             "Number of sets placed on preserve-admission cooldown after data pollution"),
+    ADD_STAT(qSetDataPollutionRejects, statistics::units::Count::get(),
+             "Number of preserve admissions rejected by set data-pollution filter"),
     ADD_STAT(qBadActionCooldowns, statistics::units::Count::get(),
              "Number of Q-learning actions placed on regression cooldown"),
     ADD_STAT(qCooldownActionSkips, statistics::units::Count::get(),

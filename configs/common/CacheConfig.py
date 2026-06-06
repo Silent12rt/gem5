@@ -373,6 +373,12 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_data_pollution_threshold = (
                     max(0, int(options.q_learning_data_pollution_threshold))
                 )
+                system.l2.replacement_policy.q_learning_set_data_pollution_filter = (
+                    not options.q_learning_disable_set_data_pollution_filter
+                )
+                system.l2.replacement_policy.q_learning_set_data_pollution_cooldown = (
+                    max(0, int(options.q_learning_set_data_pollution_cooldown))
+                )
                 system.l2.replacement_policy.q_learning_bad_action_cooldown = (
                     options.q_learning_bad_action_cooldown
                 )

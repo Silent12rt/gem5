@@ -114,6 +114,8 @@ class LRUEmissary : public Base
     bool q_learning_data_regression_guard;
     bool q_learning_data_pollution_guard;
     int q_learning_data_pollution_threshold;
+    bool q_learning_set_data_pollution_filter;
+    int q_learning_set_data_pollution_cooldown;
     int q_learning_bad_action_cooldown;
     bool q_learning_action_quality_gate;
     double q_learning_action_quality_alpha;
@@ -140,6 +142,7 @@ class LRUEmissary : public Base
     std::vector<QAction> q_actions;
     std::vector<int> q_action_cooldowns;
     std::vector<double> q_action_quality;
+    std::vector<int> q_set_data_pollution_cooldowns;
     Random::RandomPtr q_rng;
     mutable uint64_t epoch_preserve_hits;
     mutable uint64_t epoch_admission_accepts;
@@ -151,6 +154,8 @@ class LRUEmissary : public Base
     mutable uint64_t epoch_inst_fills;
     mutable uint64_t epoch_data_fills;
     mutable uint64_t epoch_data_fills_preserved_set;
+    mutable uint64_t epoch_set_data_pollution_marks;
+    mutable uint64_t epoch_set_data_pollution_rejects;
     TaggedIndexingPolicy *indexingPolicy;
 
     mutable struct LRUEmissaryStats : public statistics::Group
@@ -178,6 +183,8 @@ class LRUEmissary : public Base
         statistics::Scalar qInstFillBaselineUpdates;
         statistics::Scalar qFillRegressionGuardForces;
         statistics::Scalar qDataPollutionGuardForces;
+        statistics::Scalar qSetDataPollutionMarks;
+        statistics::Scalar qSetDataPollutionRejects;
         statistics::Scalar qBadActionCooldowns;
         statistics::Scalar qCooldownActionSkips;
         statistics::Scalar qActionQualityUpdates;
@@ -220,6 +227,9 @@ class LRUEmissary : public Base
     double qActionToAdmissionRate(int action) const;
     int qActionToPreserveWays(int action) const;
     int countSetPreserves(CacheBlk *blk) const;
+    void qEnsureSetDataPollutionState();
+    void qMarkSetDataPolluted(CacheBlk *blk);
+    bool qSetDataPollutionBlocked(CacheBlk *blk) const;
     void qApplyAdmission(
         const std::shared_ptr<ReplacementData>& replacement_data,
         const PacketPtr pkt) const;

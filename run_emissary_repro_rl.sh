@@ -46,7 +46,7 @@ RL_SEEDS=${RL_SEEDS:-"1 2 3"}
 RL_SAMPLE_RATE=${RL_SAMPLE_RATE:-12.5}
 RL_TARGET_SATURATION=${RL_TARGET_SATURATION:-10}
 RL_TARGET_OCCUPANCY=${RL_TARGET_OCCUPANCY:-1.5}
-RL_EPSILON=${RL_EPSILON:-0.01}
+RL_EPSILON=${RL_EPSILON:-0.005}
 RL_ALPHA=${RL_ALPHA:-0.2}
 RL_GAMMA=${RL_GAMMA:-0.8}
 RL_MIN_PRESERVE_WAYS=${RL_MIN_PRESERVE_WAYS:-0}
@@ -75,15 +75,17 @@ RL_FILL_REGRESSION_GUARD=${RL_FILL_REGRESSION_GUARD:-1}
 RL_DATA_REGRESSION_GUARD=${RL_DATA_REGRESSION_GUARD:-1}
 RL_DATA_POLLUTION_GUARD=${RL_DATA_POLLUTION_GUARD:-1}
 RL_DATA_POLLUTION_THRESHOLD=${RL_DATA_POLLUTION_THRESHOLD:-0}
-RL_BAD_ACTION_COOLDOWN=${RL_BAD_ACTION_COOLDOWN:-12}
+RL_SET_DATA_POLLUTION_FILTER=${RL_SET_DATA_POLLUTION_FILTER:-1}
+RL_SET_DATA_POLLUTION_COOLDOWN=${RL_SET_DATA_POLLUTION_COOLDOWN:-8}
+RL_BAD_ACTION_COOLDOWN=${RL_BAD_ACTION_COOLDOWN:-16}
 RL_ACTION_QUALITY_GATE=${RL_ACTION_QUALITY_GATE:-1}
 RL_ACTION_QUALITY_ALPHA=${RL_ACTION_QUALITY_ALPHA:-0.35}
-RL_MIN_ACTION_QUALITY=${RL_MIN_ACTION_QUALITY:--0.35}
-RL_ACTION_QUALITY_RECOVERY=${RL_ACTION_QUALITY_RECOVERY:-0.03}
+RL_MIN_ACTION_QUALITY=${RL_MIN_ACTION_QUALITY:--0.2}
+RL_ACTION_QUALITY_RECOVERY=${RL_ACTION_QUALITY_RECOVERY:-0.02}
 RL_ACTION_QUALITY_SAMPLE_CAP=${RL_ACTION_QUALITY_SAMPLE_CAP:-8.0}
 RL_QUALITY_DATA_WEIGHT=${RL_QUALITY_DATA_WEIGHT:-2.0}
 RL_QUALITY_TOTAL_WEIGHT=${RL_QUALITY_TOTAL_WEIGHT:-1.0}
-RL_QUALITY_PRESERVED_DATA_WEIGHT=${RL_QUALITY_PRESERVED_DATA_WEIGHT:-32.0}
+RL_QUALITY_PRESERVED_DATA_WEIGHT=${RL_QUALITY_PRESERVED_DATA_WEIGHT:-64.0}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -204,6 +206,11 @@ run_rl_suite() {
     if [[ "${RL_DATA_POLLUTION_GUARD}" != "1" ]]; then
         data_pollution_guard_args+=(--q-learning-disable-data-pollution-guard)
     fi
+    local set_data_pollution_filter_args=()
+    if [[ "${RL_SET_DATA_POLLUTION_FILTER}" != "1" ]]; then
+        set_data_pollution_filter_args+=(
+            --q-learning-disable-set-data-pollution-filter)
+    fi
     local quality_gate_args=()
     if [[ "${RL_ACTION_QUALITY_GATE}" != "1" ]]; then
         quality_gate_args+=(--q-learning-disable-action-quality-gate)
@@ -244,6 +251,7 @@ run_rl_suite() {
             --q-penalty-data-fill="${RL_Q_PENALTY_DATA_FILL}" \
             --q-learning-bad-action-cooldown="${RL_BAD_ACTION_COOLDOWN}" \
             --q-learning-data-pollution-threshold="${RL_DATA_POLLUTION_THRESHOLD}" \
+            --q-learning-set-data-pollution-cooldown="${RL_SET_DATA_POLLUTION_COOLDOWN}" \
             --q-learning-action-quality-alpha="${RL_ACTION_QUALITY_ALPHA}" \
             --q-learning-min-action-quality="${RL_MIN_ACTION_QUALITY}" \
             --q-learning-action-quality-recovery="${RL_ACTION_QUALITY_RECOVERY}" \
@@ -254,6 +262,7 @@ run_rl_suite() {
             "${fill_guard_args[@]}" \
             "${data_guard_args[@]}" \
             "${data_pollution_guard_args[@]}" \
+            "${set_data_pollution_filter_args[@]}" \
             "${quality_gate_args[@]}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \

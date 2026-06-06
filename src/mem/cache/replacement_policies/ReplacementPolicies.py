@@ -102,7 +102,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_alpha = Param.Float(0.2, "Q-learning learning rate")
     q_learning_gamma = Param.Float(0.8, "Q-learning discount factor")
-    q_learning_epsilon = Param.Float(0.01, "Q-learning exploration rate")
+    q_learning_epsilon = Param.Float(0.005, "Q-learning exploration rate")
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
     )
@@ -191,8 +191,16 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0,
         "Minimum per-epoch data fills in preserved sets before pollution guard fires",
     )
+    q_learning_set_data_pollution_filter = Param.Bool(
+        True,
+        "Reject preserve admissions in sets recently polluted by data fills",
+    )
+    q_learning_set_data_pollution_cooldown = Param.Int(
+        8,
+        "Epochs to reject preserve admissions after set-local data pollution",
+    )
     q_learning_bad_action_cooldown = Param.Int(
-        12, "Epochs to suppress an action after it causes fill regression"
+        16, "Epochs to suppress an action after it causes fill regression"
     )
     q_learning_action_quality_gate = Param.Bool(
         True, "Suppress actions with persistently negative quality"
@@ -201,10 +209,10 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0.35, "EWMA alpha for action quality updates"
     )
     q_learning_min_action_quality = Param.Float(
-        -0.35, "Minimum action quality before an action is suppressed"
+        -0.2, "Minimum action quality before an action is suppressed"
     )
     q_learning_action_quality_recovery = Param.Float(
-        0.03, "OFF-epoch recovery step for negative action quality"
+        0.02, "OFF-epoch recovery step for negative action quality"
     )
     q_learning_action_quality_sample_cap = Param.Float(
         8.0, "Absolute cap for per-epoch action quality samples"
@@ -216,7 +224,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         1.0, "Action quality weight for total-fill regression"
     )
     q_learning_quality_preserved_data_weight = Param.Float(
-        32.0, "Action quality penalty weight for data fills in preserved sets"
+        64.0, "Action quality penalty weight for data fills in preserved sets"
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"
