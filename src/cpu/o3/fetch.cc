@@ -60,6 +60,7 @@
 #include "debug/Drain.hh"
 #include "debug/Fetch.hh"
 #include "debug/O3CPU.hh"
+#include "mem/cache/replacement_policies/emissary_rl_control.hh"
 #include "mem/packet.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/byteswap.hh"
@@ -147,6 +148,7 @@ Fetch::Fetch(CPU *_cpu, const BaseO3CPUParams &params)
 {
     if (emissaryRngSeed != 0) {
         rng->init(emissaryRngSeed);
+        emissaryAdmissionRng->init(emissaryRngSeed ^ 0x9e3779b9U);
     }
 
     if (numThreads > MaxThreads)
@@ -236,6 +238,12 @@ Fetch::FetchStatGroup::FetchStatGroup(CPU *cpu, Fetch *fetch)
                "Number of EMISSARY mark requests sent"),
       ADD_STAT(emissaryPreserves, statistics::units::Count::get(),
                "Number of EMISSARY mark requests requesting preservation"),
+      ADD_STAT(emissaryRLOffSuppressions, statistics::units::Count::get(),
+               "Number of RL marks suppressed while the action was OFF"),
+      ADD_STAT(emissaryRLAdmissionRejects, statistics::units::Count::get(),
+               "Number of RL candidates rejected before cache access"),
+      ADD_STAT(emissaryRLAdmissionAccepts, statistics::units::Count::get(),
+               "Number of RL candidates admitted before cache access"),
       ADD_STAT(nisnDist, statistics::units::Count::get(),
                "Number of instructions fetched each cycle (Total)"),
       ADD_STAT(idleRate, statistics::units::Ratio::get(),
@@ -261,6 +269,9 @@ Fetch::FetchStatGroup::FetchStatGroup(CPU *cpu, Fetch *fetch)
     emissaryThresholdRejects.prereq(emissaryThresholdRejects);
     emissaryMarks.prereq(emissaryMarks);
     emissaryPreserves.prereq(emissaryPreserves);
+    emissaryRLOffSuppressions.prereq(emissaryRLOffSuppressions);
+    emissaryRLAdmissionRejects.prereq(emissaryRLAdmissionRejects);
+    emissaryRLAdmissionAccepts.prereq(emissaryRLAdmissionAccepts);
     ftNumber.init(0, fetch->maxFTPerCycle, 1);
     nisnDist
         .init(/* base value */ 0,
@@ -416,19 +427,6 @@ Fetch::processCacheCompletion(PacketPtr pkt)
             if (sample >= emissarySampleRate) {
                 ++fetchStats.emissarySampleRejects;
             } else {
-                RequestPtr mark_req = std::make_shared<Request>(
-                    pkt->req->getVaddr(), fetchBufferSize, Request::INST_FETCH,
-                    cpu->instRequestorId(), pkt->req->getPC(),
-                    cpu->thread[tid]->contextId());
-                if (pkt->req->hasPaddr()) {
-                    mark_req->setPaddr(pkt->req->getPaddr());
-                }
-                mark_req->taskId(cpu->taskId());
-
-                PacketPtr mark_pkt = new Packet(mark_req, MemCmd::ReadReq);
-                mark_pkt->dataDynamic(new uint8_t[fetchBufferSize]);
-                mark_pkt->setStarved(true);
-
                 const double random =
                     static_cast<double>(
                         rng->random<uint32_t>(0, 9999)) / 100.0;
@@ -436,15 +434,58 @@ Fetch::processCacheCompletion(PacketPtr pkt)
                     (random < starveRandomness) :
                     (starveAtleast == 0 ||
                      pkt->starveCount + 1 >= starveAtleast);
-                mark_pkt->setPreserve(preserve);
-                ++fetchStats.emissaryMarks;
-                if (preserve) {
-                    ++fetchStats.emissaryPreserves;
-                } else {
+
+                bool send_mark = true;
+                bool pre_admitted = false;
+                if (!preserve) {
                     ++fetchStats.emissaryThresholdRejects;
+                    if (EmissaryRLControl::enabled()) {
+                        send_mark = false;
+                    }
+                } else if (EmissaryRLControl::enabled()) {
+                    const double admission_rate =
+                        EmissaryRLControl::admissionRate();
+                    if (admission_rate <= 0.0) {
+                        ++fetchStats.emissaryRLOffSuppressions;
+                        send_mark = false;
+                    } else {
+                        const double admission_sample =
+                            static_cast<double>(
+                                emissaryAdmissionRng->random<uint32_t>(
+                                    0, 9999)) / 100.0;
+                        if (admission_sample >= admission_rate) {
+                            ++fetchStats.emissaryRLAdmissionRejects;
+                            send_mark = false;
+                        } else {
+                            ++fetchStats.emissaryRLAdmissionAccepts;
+                            pre_admitted = true;
+                        }
+                    }
                 }
-                if (!icachePort.sendTimingReq(mark_pkt)) {
-                    delete mark_pkt;
+
+                if (send_mark) {
+                    RequestPtr mark_req = std::make_shared<Request>(
+                        pkt->req->getVaddr(), fetchBufferSize,
+                        Request::INST_FETCH, cpu->instRequestorId(),
+                        pkt->req->getPC(), cpu->thread[tid]->contextId());
+                    if (pkt->req->hasPaddr()) {
+                        mark_req->setPaddr(pkt->req->getPaddr());
+                    }
+                    mark_req->taskId(cpu->taskId());
+
+                    PacketPtr mark_pkt =
+                        new Packet(mark_req, MemCmd::ReadReq);
+                    mark_pkt->dataDynamic(new uint8_t[fetchBufferSize]);
+                    mark_pkt->setStarved(true);
+                    mark_pkt->setPreserve(preserve);
+                    mark_pkt->setEmissaryPreAdmitted(pre_admitted);
+                    ++fetchStats.emissaryMarks;
+                    if (preserve) {
+                        ++fetchStats.emissaryPreserves;
+                    }
+                    if (!icachePort.sendTimingReq(mark_pkt)) {
+                        delete mark_pkt;
+                    }
                 }
             }
         }

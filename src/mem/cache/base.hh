@@ -1053,6 +1053,11 @@ class BaseCache : public ClockedObject
 
         const BaseCache &cache;
 
+        /** Hits caused by auxiliary EMISSARY mark requests. */
+        statistics::Scalar emissaryMarkHits;
+        /** Misses caused by auxiliary EMISSARY mark requests. */
+        statistics::Scalar emissaryMarkMisses;
+
         /** Number of hits for demand accesses. */
         statistics::Formula demandHits;
         /** Number of hit for all accesses. */
@@ -1272,6 +1277,9 @@ class BaseCache : public ClockedObject
     {
         assert(pkt->req->requestorId() < system->maxRequestors());
         stats.cmdStats(pkt).misses[pkt->req->requestorId()]++;
+        if (pkt->isStarved()) {
+            stats.emissaryMarkMisses++;
+        }
         pkt->req->incAccessDepth();
         if (missCount) {
             --missCount;
@@ -1283,6 +1291,9 @@ class BaseCache : public ClockedObject
     {
         assert(pkt->req->requestorId() < system->maxRequestors());
         stats.cmdStats(pkt).hits[pkt->req->requestorId()]++;
+        if (pkt->isStarved()) {
+            stats.emissaryMarkHits++;
+        }
     }
 
     /**

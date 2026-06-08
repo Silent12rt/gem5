@@ -44,6 +44,8 @@ PAPER_STARVE_RANDOMNESS=${PAPER_STARVE_RANDOMNESS:-100}
 
 RL_SEEDS=${RL_SEEDS:-"1 2 3"}
 RL_SAMPLE_RATE=${RL_SAMPLE_RATE:-12.5}
+RL_STARVE_ATLEAST=${RL_STARVE_ATLEAST:-1}
+RL_STARVE_RANDOMNESS=${RL_STARVE_RANDOMNESS:-${PAPER_STARVE_RANDOMNESS}}
 RL_TARGET_SATURATION=${RL_TARGET_SATURATION:-10}
 RL_TARGET_OCCUPANCY=${RL_TARGET_OCCUPANCY:-1.5}
 RL_EPSILON=${RL_EPSILON:-0.005}
@@ -268,8 +270,8 @@ run_rl_suite() {
             --emissary-enable \
             --emissary-require-iq-empty \
             --emissary-sample-rate="${RL_SAMPLE_RATE}" \
-            --starveAtleast="${PAPER_STARVE_ATLEAST}" \
-            --starveRandomness="${PAPER_STARVE_RANDOMNESS}"
+            --starveAtleast="${RL_STARVE_ATLEAST}" \
+            --starveRandomness="${RL_STARVE_RANDOMNESS}"
     done
 }
 

@@ -396,6 +396,8 @@ class Packet : public Printable, public Extensible<Packet>
     bool _isStarved;
     /// True if this packet marks a preserve-worthy line.
     bool _isPreserve;
+    /// True if RL admission was already performed before cache access.
+    bool _emissaryPreAdmitted;
 
     /// The size of the request or transfer.
     unsigned size;
@@ -860,6 +862,11 @@ class Packet : public Printable, public Extensible<Packet>
         return _isPreserve;
     }
 
+    bool isEmissaryPreAdmitted() const
+    {
+        return _emissaryPreAdmitted;
+    }
+
     /**
      * Accessor function to atomic op.
      */
@@ -898,7 +905,7 @@ class Packet : public Printable, public Extensible<Packet>
     Packet(const RequestPtr &_req, MemCmd _cmd)
         :  cmd(_cmd), id((PacketId)_req.get()), req(_req),
            data(nullptr), addr(0), _isSecure(false), _isStarved(false),
-	   _isPreserve(false), size(0),
+	   _isPreserve(false), _emissaryPreAdmitted(false), size(0),
            _qosValue(0),
            htmReturnReason(HtmCacheFailure::NO_FAIL),
            htmTransactionUid(0),
@@ -940,7 +947,7 @@ class Packet : public Printable, public Extensible<Packet>
     Packet(const RequestPtr &_req, MemCmd _cmd, int _blkSize, PacketId _id = 0)
         :  cmd(_cmd), id(_id ? _id : (PacketId)_req.get()), req(_req),
            data(nullptr), addr(0), _isSecure(false), _isStarved(false),
-	   _isPreserve(false),
+	   _isPreserve(false), _emissaryPreAdmitted(false),
            _qosValue(0),
            htmReturnReason(HtmCacheFailure::NO_FAIL),
            htmTransactionUid(0),
@@ -970,6 +977,7 @@ class Packet : public Printable, public Extensible<Packet>
            data(nullptr),
            addr(pkt->addr), _isSecure(pkt->_isSecure), 
 	   _isStarved(pkt->_isStarved), _isPreserve(pkt->_isPreserve),
+           _emissaryPreAdmitted(pkt->_emissaryPreAdmitted),
 	   size(pkt->size),
            bytesValid(pkt->bytesValid),
            _qosValue(pkt->qosValue()),
@@ -1143,6 +1151,11 @@ class Packet : public Printable, public Extensible<Packet>
     void setPreserve(bool is_preserve)
     {
         _isPreserve = is_preserve;
+    }
+
+    void setEmissaryPreAdmitted(bool admitted)
+    {
+        _emissaryPreAdmitted = admitted;
     }
 
     /**

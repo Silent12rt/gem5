@@ -509,6 +509,9 @@ BaseCache::recvTimingReq(PacketPtr pkt)
             }
             if (pkt->isPreserve()) {
                 blk->setPreserve();
+                if (pkt->isEmissaryPreAdmitted()) {
+                    blk->setEmissaryPreAdmitted();
+                }
             }
         }
 
@@ -516,6 +519,9 @@ BaseCache::recvTimingReq(PacketPtr pkt)
             blk->setStarved();
             if (pkt->isPreserve()) {
                 blk->setPreserve();
+                if (pkt->isEmissaryPreAdmitted()) {
+                    blk->setEmissaryPreAdmitted();
+                }
             }
         }
 
@@ -633,6 +639,9 @@ BaseCache::recvTimingResp(PacketPtr pkt)
         blk->setStarved();
         if (pkt->isPreserve()) {
             blk->setPreserve();
+            if (pkt->isEmissaryPreAdmitted()) {
+                blk->setEmissaryPreAdmitted();
+            }
         }
     }
 
@@ -1808,6 +1817,7 @@ BaseCache::writebackBlk(CacheBlk *blk)
         pkt->evictFromL1 = true;
         pkt->setStarved(blk->isStarved());
         pkt->setPreserve(blk->isPreserve());
+        pkt->setEmissaryPreAdmitted(blk->isEmissaryPreAdmitted());
         pkt->tickBlkInserted = blk->getTickInserted();
         pkt->tickBlkRecentAccess = blk->tickRecentAccess;
         pkt->accessCount = blk->getRefCount();
@@ -2303,6 +2313,10 @@ BaseCache::CacheCmdStats::regStatsFromParent()
 BaseCache::CacheStats::CacheStats(BaseCache &c)
     : statistics::Group(&c), cache(c),
 
+    ADD_STAT(emissaryMarkHits, statistics::units::Count::get(),
+             "number of hits caused by auxiliary EMISSARY mark requests"),
+    ADD_STAT(emissaryMarkMisses, statistics::units::Count::get(),
+             "number of misses caused by auxiliary EMISSARY mark requests"),
     ADD_STAT(demandHits, statistics::units::Count::get(),
              "number of demand (read+write) hits"),
     ADD_STAT(overallHits, statistics::units::Count::get(),

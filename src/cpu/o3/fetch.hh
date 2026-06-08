@@ -207,6 +207,7 @@ class Fetch
     ProbePointArg<RequestPtr> *ppFetchRequestSent;
 
     Random::RandomPtr rng = Random::genRandom();
+    Random::RandomPtr emissaryAdmissionRng = Random::genRandom();
 
   public:
     /** Fetch constructor. */
@@ -602,6 +603,12 @@ class Fetch
         statistics::Scalar emissaryMarks;
         /** EMISSARY mark requests that requested L2 preservation. */
         statistics::Scalar emissaryPreserves;
+        /** RL marks suppressed while the active action was OFF. */
+        statistics::Scalar emissaryRLOffSuppressions;
+        /** RL candidates rejected by source-side admission. */
+        statistics::Scalar emissaryRLAdmissionRejects;
+        /** RL candidates accepted by source-side admission. */
+        statistics::Scalar emissaryRLAdmissionAccepts;
         /** Distribution of number of instructions fetched each cycle. */
         statistics::Distribution nisnDist;
         /** Rate of how often fetch was idle. */

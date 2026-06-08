@@ -230,7 +230,7 @@ class LRUEmissary : public Base
     void qEnsureSetDataPollutionState();
     void qMarkSetDataPolluted(CacheBlk *blk);
     bool qSetDataPollutionBlocked(CacheBlk *blk) const;
-    void qApplyAdmission(
+    bool qApplyAdmission(
         const std::shared_ptr<ReplacementData>& replacement_data,
         const PacketPtr pkt) const;
     int qState(

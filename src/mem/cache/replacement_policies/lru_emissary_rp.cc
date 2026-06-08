@@ -38,6 +38,7 @@
 #include "base/output.hh"
 #include "base/trace.hh"
 #include "debug/EMISSARY.hh"
+#include "mem/cache/replacement_policies/emissary_rl_control.hh"
 #include "params/LRUEmissaryRP.hh"
 #include "sim/cur_tick.hh"
 #include "sim/core.hh"
@@ -205,6 +206,9 @@ LRUEmissary::LRUEmissary(const Params &p)
         q_has_last = true;
         effective_preserve_ways = qActionToPreserveWays(q_last_action);
     }
+    EmissaryRLControl::configure(
+        q_learning_preserve,
+        q_learning_preserve ? qActionToAdmissionRate(q_last_action) : 0.0);
     registerExitCallback([this]() { dumpPreserveHist(); });
 }
 
@@ -259,7 +263,9 @@ LRUEmissary::touch(
         stats.preserveHits++;
         epoch_preserve_hits++;
     }
-    qApplyAdmission(replacement_data, pkt);
+    if (!qApplyAdmission(replacement_data, pkt)) {
+        return;
+    }
     touch(replacement_data);
 }
 
@@ -267,8 +273,9 @@ void
 LRUEmissary::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     const_cast<LRUEmissary*>(this)->checkToFlushPreserveBits();
-    std::static_pointer_cast<LRUEmissaryReplData>(
-        replacement_data)->lastTouchTick = max_age;
+    auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
+        replacement_data);
+    repl_data->lastTouchTick = q_learning_preserve ? curTick() : max_age;
 }
 
 void
@@ -292,7 +299,9 @@ LRUEmissary::reset(
             }
         }
     }
-    qApplyAdmission(replacement_data, pkt);
+    if (!qApplyAdmission(replacement_data, pkt)) {
+        return;
+    }
     reset(replacement_data);
 }
 
@@ -301,9 +310,14 @@ LRUEmissary::reset(const std::shared_ptr<ReplacementData>& replacement_data) con
 {
     auto *non_const_this = const_cast<LRUEmissary*>(this);
     non_const_this->checkToFlushPreserveBits();
-    checkLRU(replacement_data);
-    std::static_pointer_cast<LRUEmissaryReplData>(
-        replacement_data)->lastTouchTick = max_age;
+    auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
+        replacement_data);
+    if (q_learning_preserve) {
+        repl_data->lastTouchTick = curTick();
+    } else {
+        checkLRU(replacement_data);
+        repl_data->lastTouchTick = max_age;
+    }
 }
 
 void
@@ -478,10 +492,14 @@ LRUEmissary::dumpPreserveHist()
         epoch_preserve_victims + epoch_non_preserve_victims;
     const double preserveVictimPct = victimTotal ?
         100.0 * epoch_preserve_victims / victimTotal : 0.0;
+    const int epochAction =
+        q_has_last ? q_last_action : q_learning_default_action;
     const uint64_t admissionTotal =
         epoch_admission_accepts + epoch_admission_rejects;
-    const double admissionAcceptPct = admissionTotal ?
-        100.0 * epoch_admission_accepts / admissionTotal : 0.0;
+    const double admissionAcceptPct = q_learning_preserve ?
+        qActionToAdmissionRate(epochAction) :
+        (admissionTotal ?
+            100.0 * epoch_admission_accepts / admissionTotal : 0.0);
     const double preserveReusePerAdmission = epoch_admission_accepts ?
         static_cast<double>(epoch_preserve_hits) /
             static_cast<double>(epoch_admission_accepts) : 0.0;
@@ -491,8 +509,7 @@ LRUEmissary::dumpPreserveHist()
         static_cast<double>(epoch_admission_accepts) / 1000.0;
 
     if (q_learning_preserve && numSets > 0) {
-        const int activeAction =
-            q_has_last ? q_last_action : q_learning_default_action;
+        const int activeAction = epochAction;
         const bool activeOff =
             qActionToAdmissionRate(activeAction) <= 0.0 ||
             qActionToPreserveWays(activeAction) <= 0;
@@ -738,26 +755,26 @@ LRUEmissary::qSetDataPollutionBlocked(CacheBlk *blk) const
         q_set_data_pollution_cooldowns[set] > 0;
 }
 
-void
+bool
 LRUEmissary::qApplyAdmission(
     const std::shared_ptr<ReplacementData>& replacement_data,
     const PacketPtr pkt) const
 {
     if (!q_learning_preserve || !pkt || !pkt->isPreserve()) {
-        return;
+        return true;
     }
 
     auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
         replacement_data);
     if (repl_data->blk && repl_data->blk->isPreserve()) {
-        return;
+        return true;
     }
 
     if (effective_preserve_ways <= 0) {
         pkt->setPreserve(false);
         stats.qAdmissionRejects++;
         epoch_admission_rejects++;
-        return;
+        return false;
     }
 
     if (q_learning_set_guard && repl_data->blk &&
@@ -766,7 +783,7 @@ LRUEmissary::qApplyAdmission(
         stats.qAdmissionRejects++;
         stats.qAdmissionGuardRejects++;
         epoch_admission_rejects++;
-        return;
+        return false;
     }
 
     if (qSetDataPollutionBlocked(repl_data->blk)) {
@@ -775,7 +792,13 @@ LRUEmissary::qApplyAdmission(
         stats.qSetDataPollutionRejects++;
         epoch_admission_rejects++;
         epoch_set_data_pollution_rejects++;
-        return;
+        return false;
+    }
+
+    if (pkt->isEmissaryPreAdmitted()) {
+        stats.qAdmissionAccepts++;
+        epoch_admission_accepts++;
+        return true;
     }
 
     const double rate =
@@ -785,11 +808,13 @@ LRUEmissary::qApplyAdmission(
     if (sample < rate) {
         stats.qAdmissionAccepts++;
         epoch_admission_accepts++;
-    } else {
-        pkt->setPreserve(false);
-        stats.qAdmissionRejects++;
-        epoch_admission_rejects++;
+        return true;
     }
+
+    pkt->setPreserve(false);
+    stats.qAdmissionRejects++;
+    epoch_admission_rejects++;
+    return false;
 }
 
 int
@@ -1088,6 +1113,8 @@ LRUEmissary::qUpdate(
     q_last_action = nextAction;
     q_has_last = true;
     effective_preserve_ways = nextPreserveWays;
+    EmissaryRLControl::setAdmissionRate(
+        qActionToAdmissionRate(nextAction));
     stats.qLearningActionSum +=
         static_cast<uint64_t>(qActionToAdmissionRate(nextAction) * 1000.0);
     stats.qLearningPreserveWaySum += nextPreserveWays;

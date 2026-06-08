@@ -92,12 +92,14 @@ class CacheBlk : public TaggedEntry
         BlkPreserve =       0x200,
         /** line used since last preserve-flush epoch */
         BlkUsed =           0x400,
+        /** preserve admission was already sampled at the fetch stage */
+        BlkEmissaryPreAdmitted = 0x800,
 
         /**
          * Helper enum value that includes all other bits. Whenever a new
          * bits is added, this should be updated.
          */
-        AllBits  =          0x61E,
+        AllBits  =          0xE1E,
     };
 
     /**
@@ -276,7 +278,19 @@ class CacheBlk : public TaggedEntry
 
     bool isPreserve() const { return (coherence & BlkPreserve) != 0; }
     void setPreserve() { setCoherenceBits(BlkPreserve); }
-    void clearPreserve() { clearCoherenceBits(BlkPreserve); }
+    void clearPreserve()
+    {
+        clearCoherenceBits(BlkPreserve | BlkEmissaryPreAdmitted);
+    }
+
+    bool isEmissaryPreAdmitted() const
+    {
+        return (coherence & BlkEmissaryPreAdmitted) != 0;
+    }
+    void setEmissaryPreAdmitted()
+    {
+        setCoherenceBits(BlkEmissaryPreAdmitted);
+    }
 
     /**
      * Clear the prefetching bit. Either because it was recently used, or due
