@@ -192,6 +192,8 @@ class LRUEmissary : public Base
         statistics::Scalar qQualityActionBlocks;
         statistics::Scalar qQualityActionForces;
         statistics::Scalar qQualityActionSkips;
+        statistics::Scalar qNoEffectEpochs;
+        statistics::Scalar qNoEffectActionForces;
         statistics::Scalar preserveHits;
     } stats;
 
@@ -246,6 +248,7 @@ class LRUEmissary : public Base
         int nextState, double reward, double saturatedPct,
         double preserveOccupancyPct, double preserveVictimPct,
         double preserveReusePerAdmission, double admissionAcceptPct,
+        bool actionEffective,
         double reuseReward, double nonPreserveVictimReward,
         double instFillReductionReward, double instFillRegressionPenalty,
         double instFillOffBaseline, double instFillDelta,
@@ -264,6 +267,7 @@ class LRUEmissary : public Base
         double saturatedPct,
         double preserveOccupancyPct, double preserveVictimPct,
         double preserveReusePerAdmission, double admissionAcceptPct,
+        bool actionEffective, bool noEffectEpoch, bool qValueUpdated,
         double reuseReward, double nonPreserveVictimReward,
         double instFillReductionReward, double instFillRegressionPenalty,
         double instFillOffBaseline, double instFillDelta,

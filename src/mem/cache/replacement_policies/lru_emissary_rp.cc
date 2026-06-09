@@ -188,10 +188,10 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_actions.empty()) {
         q_actions = {
             {0.0, 0},
-            {0.390625, 1},
-            {0.78125, 1},
-            {1.5625, 1},
-            {3.125, 2},
+            {3.125, 1},
+            {6.25, 1},
+            {12.5, 2},
+            {25.0, 2},
         };
     }
     q_num_actions = static_cast<int>(q_actions.size());
@@ -513,6 +513,11 @@ LRUEmissary::dumpPreserveHist()
         const bool activeOff =
             qActionToAdmissionRate(activeAction) <= 0.0 ||
             qActionToPreserveWays(activeAction) <= 0;
+        const bool actionEffective =
+            epoch_admission_accepts > 0 ||
+            epoch_preserve_hits > 0 ||
+            totalPreserved > 0;
+        const bool noEffectEpoch = !activeOff && !actionEffective;
         const double epochInstFills =
             static_cast<double>(epoch_inst_fills);
         const double epochDataFills =
@@ -533,7 +538,8 @@ LRUEmissary::dumpPreserveHist()
         double dataFillRegressionPenalty = 0.0;
         double totalFillRegressionPenalty = 0.0;
 
-        if (!activeOff && q_has_inst_fill_off_baseline) {
+        if (!activeOff && actionEffective &&
+            q_has_inst_fill_off_baseline) {
             instFillDelta = q_inst_fill_off_baseline -
                 epochInstFills;
             instFillReductionReward =
@@ -544,7 +550,7 @@ LRUEmissary::dumpPreserveHist()
                 (std::max(0.0, -instFillDelta) / 1000.0);
         }
 
-        if (!activeOff && q_has_fill_off_baseline) {
+        if (!activeOff && actionEffective && q_has_fill_off_baseline) {
             dataFillDelta = q_data_fill_off_baseline - epochDataFills;
             totalFillDelta = q_total_fill_off_baseline - epochTotalFills;
             totalFillReductionReward =
@@ -588,53 +594,54 @@ LRUEmissary::dumpPreserveHist()
             stats.qInstFillBaselineUpdates++;
         }
 
-        const double reuseReward =
+        const double reuseReward = noEffectEpoch ? 0.0 :
             q_reward_preserve_hit * cappedPreserveReuse;
-        const double nonPreserveVictimReward =
+        const double nonPreserveVictimReward = noEffectEpoch ? 0.0 :
             q_reward_non_preserve_victim *
                 (static_cast<double>(epoch_non_preserve_victims) / 10000.0);
-        const double instFillPenalty =
+        const double instFillPenalty = noEffectEpoch ? 0.0 :
             q_penalty_inst_fill *
                 (static_cast<double>(epoch_inst_fills) / 1000.0);
-        const double dataFillPenalty =
+        const double dataFillPenalty = noEffectEpoch ? 0.0 :
             q_penalty_data_fill *
                 (static_cast<double>(epoch_data_fills_preserved_set) /
                     1000.0);
-        const double preserveVictimPenalty =
+        const double preserveVictimPenalty = noEffectEpoch ? 0.0 :
             q_penalty_preserve_victim *
                 (static_cast<double>(epoch_preserve_victims) / 1000.0);
-        const double admittedPreservePenalty =
+        const double admittedPreservePenalty = noEffectEpoch ? 0.0 :
             q_penalty_admitted_preserve * admittedPreserveK;
-        const double admissionPressurePenalty =
+        const double admissionPressurePenalty = noEffectEpoch ? 0.0 :
             q_penalty_admission_pressure * admissionAcceptPct;
-        const double preserveClearPenalty =
+        const double preserveClearPenalty = noEffectEpoch ? 0.0 :
             q_penalty_preserve_clear *
                 (static_cast<double>(epoch_preserve_clears) / 1000.0);
-        const double preserveOccupancyPenalty =
+        const double preserveOccupancyPenalty = noEffectEpoch ? 0.0 :
             q_penalty_preserve_occupancy *
                 std::max(0.0,
                     preserveOccupancyPct - q_learning_target_occupancy);
-        const double quotaPenalty =
+        const double quotaPenalty = noEffectEpoch ? 0.0 :
             q_penalty_quota_exceeded *
                 static_cast<double>(epoch_quota_exceeded_sets);
-        const double saturationPenalty =
+        const double saturationPenalty = noEffectEpoch ? 0.0 :
             q_penalty_saturation *
                 std::max(0.0, saturatedPct - q_learning_target_saturation);
-        const double reward =
+        const double reward = noEffectEpoch ? 0.0 :
             reuseReward + nonPreserveVictimReward +
-            instFillReductionReward + totalFillReductionReward -
-            instFillRegressionPenalty -
-            dataFillRegressionPenalty - totalFillRegressionPenalty -
-            instFillPenalty - dataFillPenalty -
-            preserveVictimPenalty - admittedPreservePenalty -
-            admissionPressurePenalty - preserveClearPenalty -
-            preserveOccupancyPenalty - quotaPenalty - saturationPenalty;
+                instFillReductionReward + totalFillReductionReward -
+                instFillRegressionPenalty -
+                dataFillRegressionPenalty - totalFillRegressionPenalty -
+                instFillPenalty - dataFillPenalty -
+                preserveVictimPenalty - admittedPreservePenalty -
+                admissionPressurePenalty - preserveClearPenalty -
+                preserveOccupancyPenalty - quotaPenalty - saturationPenalty;
         const int nextState =
             qState(saturatedPct, preserveOccupancyPct, preserveVictimPct,
                 preserveReusePerAdmission, admissionAcceptPct);
         qUpdate(
             nextState, reward, saturatedPct, preserveOccupancyPct,
             preserveVictimPct, preserveReusePerAdmission, admissionAcceptPct,
+            actionEffective,
             reuseReward, nonPreserveVictimReward,
             instFillReductionReward, instFillRegressionPenalty,
             instFillOffBaseline, instFillDelta,
@@ -948,6 +955,7 @@ LRUEmissary::qUpdate(
     int nextState, double reward, double saturatedPct,
     double preserveOccupancyPct, double preserveVictimPct,
     double preserveReusePerAdmission, double admissionAcceptPct,
+    bool actionEffective,
     double reuseReward, double nonPreserveVictimReward,
     double instFillReductionReward, double instFillRegressionPenalty,
     double instFillOffBaseline, double instFillDelta,
@@ -967,17 +975,18 @@ LRUEmissary::qUpdate(
     const bool activeOff =
         qActionToAdmissionRate(activeAction) <= 0.0 ||
         qActionToPreserveWays(activeAction) <= 0;
+    const bool noEffectEpoch = !activeOff && !actionEffective;
     const bool totalFillRegressionGuarded =
         q_learning_fill_regression_guard && q_has_fill_off_baseline &&
-        !activeOff && totalFillDelta < 0.0;
+        !activeOff && actionEffective && totalFillDelta < 0.0;
     const bool dataFillRegressionGuarded =
         q_learning_fill_regression_guard &&
         q_learning_data_regression_guard && q_has_fill_off_baseline &&
-        !activeOff && dataFillDelta < 0.0;
+        !activeOff && actionEffective && dataFillDelta < 0.0;
     const bool fillRegressionGuarded =
         totalFillRegressionGuarded || dataFillRegressionGuarded;
     const bool dataPollutionGuarded =
-        q_learning_data_pollution_guard && !activeOff &&
+        q_learning_data_pollution_guard && !activeOff && actionEffective &&
         epoch_data_fills_preserved_set >
             static_cast<uint64_t>(q_learning_data_pollution_threshold);
     const bool guardForced =
@@ -1012,7 +1021,7 @@ LRUEmissary::qUpdate(
         actionQualityAfter =
             activeAction < static_cast<int>(q_action_quality.size()) ?
                 q_action_quality[activeAction] : actionQualityBefore;
-    } else if (q_learning_action_quality_gate &&
+    } else if (!noEffectEpoch && q_learning_action_quality_gate &&
                q_has_fill_off_baseline &&
                activeAction > 0 &&
                activeAction < static_cast<int>(q_action_quality.size())) {
@@ -1044,7 +1053,8 @@ LRUEmissary::qUpdate(
         }
     }
 
-    if (q_has_last) {
+    bool qValueUpdated = false;
+    if (q_has_last && !noEffectEpoch) {
         double nextBest = -std::numeric_limits<double>::infinity();
         for (int action = 0; action < q_num_actions; action++) {
             if (qActionCoolingDown(action)) {
@@ -1064,9 +1074,14 @@ LRUEmissary::qUpdate(
         oldValue += q_learning_alpha *
             (reward + q_learning_gamma * nextBest - oldValue);
         stats.qLearningUpdates++;
+        qValueUpdated = true;
     }
 
     int nextAction = 0;
+    if (noEffectEpoch) {
+        stats.qNoEffectEpochs++;
+        stats.qNoEffectActionForces++;
+    }
     if (fillRegressionGuarded) {
         stats.qFillRegressionGuardForces++;
     }
@@ -1076,7 +1091,7 @@ LRUEmissary::qUpdate(
     if (actionQualityBlocked) {
         stats.qQualityActionForces++;
     }
-    if (guardForced || actionQualityBlocked) {
+    if (noEffectEpoch || guardForced || actionQualityBlocked) {
         nextAction = 0;
     } else {
         nextAction = qChooseAction(nextState);
@@ -1086,6 +1101,7 @@ LRUEmissary::qUpdate(
         nextState, activeAction, nextAction, reward, saturatedPct,
         preserveOccupancyPct,
         preserveVictimPct, preserveReusePerAdmission, admissionAcceptPct,
+        actionEffective, noEffectEpoch, qValueUpdated,
         reuseReward, nonPreserveVictimReward,
         instFillReductionReward, instFillRegressionPenalty,
         instFillOffBaseline, instFillDelta,
@@ -1127,6 +1143,7 @@ LRUEmissary::qLogEpoch(
     double saturatedPct,
     double preserveOccupancyPct, double preserveVictimPct,
     double preserveReusePerAdmission, double admissionAcceptPct,
+    bool actionEffective, bool noEffectEpoch, bool qValueUpdated,
     double reuseReward, double nonPreserveVictimReward,
     double instFillReductionReward, double instFillRegressionPenalty,
     double instFillOffBaseline, double instFillDelta,
@@ -1162,8 +1179,9 @@ LRUEmissary::qLogEpoch(
              << "saturated_pct,preserve_occupancy_pct,preserve_victim_pct,"
              << "preserve_victims,non_preserve_victims,preserve_hits,"
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
-             << "admission_accepts,admission_rejects,admission_accept_pct,"
-             << "set_data_pollution_marks,set_data_pollution_rejects,"
+              << "admission_accepts,admission_rejects,admission_accept_pct,"
+              << "action_effective,no_effect_epoch,q_value_updated,"
+              << "set_data_pollution_marks,set_data_pollution_rejects,"
              << "preserve_reuse_per_admission,preserve_clears,"
              << "quota_exceeded_sets,"
              << "reuse_reward,non_preserve_victim_reward,"
@@ -1199,9 +1217,12 @@ LRUEmissary::qLogEpoch(
          << "," << epoch_inst_fills << "," << epoch_data_fills
          << "," << (epoch_inst_fills + epoch_data_fills)
          << "," << epoch_data_fills_preserved_set
-         << "," << epoch_admission_accepts << ","
-         << epoch_admission_rejects << "," << admissionAcceptPct
-         << "," << epoch_set_data_pollution_marks
+          << "," << epoch_admission_accepts << ","
+          << epoch_admission_rejects << "," << admissionAcceptPct
+          << "," << (actionEffective ? 1 : 0)
+          << "," << (noEffectEpoch ? 1 : 0)
+          << "," << (qValueUpdated ? 1 : 0)
+          << "," << epoch_set_data_pollution_marks
          << "," << epoch_set_data_pollution_rejects
          << "," << preserveReusePerAdmission << ","
          << epoch_preserve_clears << "," << epoch_quota_exceeded_sets
@@ -1310,6 +1331,10 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of Q-learning actions forced to OFF by the quality gate"),
     ADD_STAT(qQualityActionSkips, statistics::units::Count::get(),
              "Number of quality-blocked Q-learning actions skipped during selection"),
+    ADD_STAT(qNoEffectEpochs, statistics::units::Count::get(),
+             "Number of non-OFF epochs with no observable preserve effect"),
+    ADD_STAT(qNoEffectActionForces, statistics::units::Count::get(),
+             "Number of no-effect epochs that forced the next action to OFF"),
     ADD_STAT(preserveHits, statistics::units::Count::get(),
              "Number of cache hits on preserved lines")
 {

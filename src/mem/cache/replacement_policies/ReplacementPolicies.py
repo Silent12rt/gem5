@@ -102,7 +102,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_alpha = Param.Float(0.2, "Q-learning learning rate")
     q_learning_gamma = Param.Float(0.8, "Q-learning discount factor")
-    q_learning_epsilon = Param.Float(0.005, "Q-learning exploration rate")
+    q_learning_epsilon = Param.Float(0.02, "Q-learning exploration rate")
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
     )
@@ -122,11 +122,11 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0.25, "EWMA alpha for OFF-action instruction-fill baseline"
     )
     q_action_admission_rates = VectorParam.Float(
-        [0.0, 0.390625, 0.78125, 1.5625, 3.125],
+        [0.0, 3.125, 6.25, 12.5, 25.0],
         "Q-learning preserve admission-rate actions",
     )
     q_action_preserve_ways = VectorParam.Int(
-        [0, 1, 1, 1, 2],
+        [0, 1, 1, 2, 2],
         "Q-learning effective preserve-way actions",
     )
     q_reward_non_preserve_victim = Param.Float(
