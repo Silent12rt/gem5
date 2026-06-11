@@ -102,12 +102,12 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_alpha = Param.Float(0.2, "Q-learning learning rate")
     q_learning_gamma = Param.Float(0.8, "Q-learning discount factor")
-    q_learning_epsilon = Param.Float(0.02, "Q-learning exploration rate")
+    q_learning_epsilon = Param.Float(0.08, "Q-learning exploration rate")
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
     )
     q_learning_target_occupancy = Param.Float(
-        1.5, "Preserve occupancy budget used by Q-learning reward"
+        4.0, "Preserve occupancy budget used by Q-learning reward"
     )
     q_learning_min_preserve_ways = Param.Unsigned(
         0, "Minimum preserve ways action available to Q-learning"
@@ -116,7 +116,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0, "Initial and tie-break Q-learning action index"
     )
     q_learning_reuse_cap = Param.Float(
-        1.5, "Cap applied to preserve reuse per accepted admission"
+        32.0, "Cap applied to preserve reuse per accepted admission"
     )
     q_learning_inst_baseline_alpha = Param.Float(
         0.25, "EWMA alpha for OFF-action instruction-fill baseline"
@@ -142,53 +142,53 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0.0, "Penalty weight for saturated sets above target"
     )
     q_reward_preserve_hit = Param.Float(
-        0.05, "Reward weight for reuse per accepted preserve admission"
+        0.2, "Reward weight for reuse per accepted preserve admission"
     )
     q_reward_inst_fill_reduction = Param.Float(
-        4.0, "Reward weight when instruction-side fills fall below OFF baseline"
+        8.0, "Reward weight when instruction-side fills fall below OFF baseline"
     )
     q_reward_total_fill_reduction = Param.Float(
-        4.0, "Reward weight when total fills fall below OFF baseline"
+        2.0, "Reward weight when total fills fall below OFF baseline"
     )
     q_penalty_inst_fill_regression = Param.Float(
-        50.0, "Penalty weight when instruction-side fills exceed OFF baseline"
+        12.0, "Penalty weight when instruction-side fills exceed OFF baseline"
     )
     q_penalty_data_fill_regression = Param.Float(
-        80.0, "Penalty weight when data-side fills exceed OFF baseline"
+        16.0, "Penalty weight when data-side fills exceed OFF baseline"
     )
     q_penalty_total_fill_regression = Param.Float(
-        60.0, "Penalty weight when total fills exceed OFF baseline"
+        8.0, "Penalty weight when total fills exceed OFF baseline"
     )
     q_penalty_admitted_preserve = Param.Float(
-        2.0, "Penalty weight for accepted preserve admissions"
+        0.5, "Penalty weight for accepted preserve admissions"
     )
     q_penalty_admission_pressure = Param.Float(
-        0.05, "Penalty weight for high preserve admission acceptance percentage"
+        0.005, "Penalty weight for high preserve admission acceptance percentage"
     )
     q_penalty_preserve_clear = Param.Float(
         2.0, "Penalty weight for preserved lines cleared without reuse"
     )
     q_penalty_preserve_occupancy = Param.Float(
-        3.0, "Penalty weight for preserve occupancy above target"
+        0.5, "Penalty weight for preserve occupancy above target"
     )
     q_penalty_inst_fill = Param.Float(
         0.0, "Penalty weight for instruction-side L2 fills in Q-learning"
     )
     q_penalty_data_fill = Param.Float(
-        8.0, "Penalty weight for data-side L2 fills in preserved sets"
+        2.0, "Penalty weight for data-side L2 fills in preserved sets"
     )
     q_learning_fill_regression_guard = Param.Bool(
-        True, "Force next Q-learning action to OFF after fill regression"
+        False, "Force next Q-learning action to OFF after fill regression"
     )
     q_learning_data_regression_guard = Param.Bool(
-        True, "Also force OFF when data-side fills exceed the OFF baseline"
+        False, "Also force OFF when data-side fills exceed the OFF baseline"
     )
     q_learning_data_pollution_guard = Param.Bool(
         True,
         "Force OFF when data fills occur in sets currently holding preserved lines",
     )
     q_learning_data_pollution_threshold = Param.Int(
-        0,
+        8,
         "Minimum per-epoch data fills in preserved sets before pollution guard fires",
     )
     q_learning_set_data_pollution_filter = Param.Bool(
@@ -200,10 +200,10 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "Epochs to reject preserve admissions after set-local data pollution",
     )
     q_learning_bad_action_cooldown = Param.Int(
-        16, "Epochs to suppress an action after it causes fill regression"
+        4, "Epochs to suppress an action after it causes fill regression"
     )
     q_learning_action_quality_gate = Param.Bool(
-        True, "Suppress actions with persistently negative quality"
+        False, "Suppress actions with persistently negative quality"
     )
     q_learning_action_quality_alpha = Param.Float(
         0.35, "EWMA alpha for action quality updates"
