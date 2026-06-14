@@ -235,6 +235,9 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-learning-target-occupancy", type=float, default=1.5)
     parser.add_argument("--q-learning-min-preserve-ways", type=int, default=0)
     parser.add_argument("--q-learning-default-action", type=int, default=0)
+    parser.add_argument(
+        "--q-learning-preserve-grace-epochs", type=int, default=3
+    )
     parser.add_argument("--q-learning-reuse-cap", type=float, default=1.5)
     parser.add_argument("--q-learning-inst-baseline-alpha", type=float, default=0.25)
     parser.add_argument("--q-action-admission-rates", type=str, default="")

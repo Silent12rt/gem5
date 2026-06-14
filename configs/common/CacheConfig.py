@@ -284,6 +284,9 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_default_action = max(
                     0, int(options.q_learning_default_action)
                 )
+                system.l2.replacement_policy.q_learning_preserve_grace_epochs = max(
+                    0, int(options.q_learning_preserve_grace_epochs)
+                )
                 system.l2.replacement_policy.q_learning_reuse_cap = (
                     options.q_learning_reuse_cap
                 )

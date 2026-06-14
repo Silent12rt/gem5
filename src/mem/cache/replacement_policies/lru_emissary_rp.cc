@@ -70,6 +70,8 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_learning_target_occupancy(p.q_learning_target_occupancy),
       q_learning_min_preserve_ways(p.q_learning_min_preserve_ways),
       q_learning_default_action(p.q_learning_default_action),
+      q_learning_preserve_grace_epochs(
+          p.q_learning_preserve_grace_epochs),
       q_learning_reuse_cap(p.q_learning_reuse_cap),
       q_learning_inst_baseline_alpha(p.q_learning_inst_baseline_alpha),
       q_reward_non_preserve_victim(p.q_reward_non_preserve_victim),
@@ -129,6 +131,8 @@ LRUEmissary::LRUEmissary(const Params &p)
       epoch_useful_preserve_hits(0),
       epoch_protection_events(0),
       epoch_wasted_protections(0),
+      epoch_grace_retentions(0),
+      epoch_grace_expirations(0),
       epoch_useful_credit_reward(0.0),
       epoch_admission_accepts(0),
       epoch_admission_rejects(0),
@@ -153,6 +157,8 @@ LRUEmissary::LRUEmissary(const Params &p)
     if (q_learning_min_preserve_ways < 0) {
         q_learning_min_preserve_ways = 0;
     }
+    q_learning_preserve_grace_epochs =
+        std::max(0, q_learning_preserve_grace_epochs);
     if (q_learning_reuse_cap <= 0.0) {
         q_learning_reuse_cap = 1.0;
     }
@@ -206,6 +212,8 @@ LRUEmissary::LRUEmissary(const Params &p)
     q_action_cooldowns.assign(q_num_actions, 0);
     q_action_quality.assign(q_num_actions, 0.0);
     q_pending_useful_credits.assign(q_num_states * q_num_actions, 0);
+    epoch_protection_events_by_action.assign(q_num_actions, 0);
+    epoch_useful_hits_by_action.assign(q_num_actions, 0);
     if (q_learning_preserve) {
         q_last_state = qState(0.0, 0.0, 0.0, 0.0, 0.0);
         q_last_action = q_learning_default_action;
@@ -276,6 +284,7 @@ LRUEmissary::touch(
             pkt->req->isInstFetch();
         if (demandInstructionHit) {
             repl_data->demandUsedSinceFlush = true;
+            repl_data->preserveGraceEpochs = 0;
             stats.qDemandPreserveHits++;
             epoch_demand_preserve_hits++;
 
@@ -288,6 +297,8 @@ LRUEmissary::touch(
                     repl_data->admissionState * q_num_actions +
                     repl_data->admissionAction;
                 q_pending_useful_credits[creditIndex]++;
+                epoch_useful_hits_by_action[
+                    repl_data->admissionAction]++;
                 stats.qUsefulPreserveHits++;
                 epoch_useful_preserve_hits++;
                 repl_data->protectedFromEviction = false;
@@ -455,6 +466,8 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
             ordinary_repl->admissionAction > 0 &&
             !ordinary_repl->protectedFromEviction) {
             ordinary_repl->protectedFromEviction = true;
+            epoch_protection_events_by_action[
+                ordinary_repl->admissionAction]++;
             stats.qProtectionEvents++;
             epoch_protection_events++;
         }
@@ -516,18 +529,30 @@ LRUEmissary::dumpPreserveHist()
             auto repl_data =
                 std::static_pointer_cast<LRUEmissaryReplData>(
                     entry->replacementData);
-            if (blk->isPreserve()) {
-                numPreserved++;
-            }
             const bool usedSinceFlush = q_learning_preserve ?
                 repl_data->demandUsedSinceFlush : blk->isUsed();
             if (blk->isPreserve() && !usedSinceFlush) {
-                stats.preserveClears++;
-                epoch_preserve_clears++;
-                qClearLineTracking(repl_data, true);
-                blk->clearPreserve();
+                if (q_learning_preserve &&
+                    repl_data->preserveGraceEpochs > 0) {
+                    repl_data->preserveGraceEpochs--;
+                    stats.qGraceRetentions++;
+                    epoch_grace_retentions++;
+                } else {
+                    if (q_learning_preserve &&
+                        repl_data->admissionAction >= 0) {
+                        stats.qGraceExpirations++;
+                        epoch_grace_expirations++;
+                    }
+                    stats.preserveClears++;
+                    epoch_preserve_clears++;
+                    qClearLineTracking(repl_data, true);
+                    blk->clearPreserve();
+                }
             } else if (q_learning_preserve && !blk->isPreserve()) {
                 qClearLineTracking(repl_data, false);
+            }
+            if (blk->isPreserve()) {
+                numPreserved++;
             }
             repl_data->demandUsedSinceFlush = false;
             blk->clearUsed();
@@ -585,8 +610,11 @@ LRUEmissary::dumpPreserveHist()
             qActionToAdmissionRate(activeAction) <= 0.0 ||
             qActionToPreserveWays(activeAction) <= 0;
         const bool actionEffective = epoch_admission_accepts > 0;
-        const bool noEffectEpoch = !activeOff && !actionEffective;
         const bool scoreActiveAction = !activeOff && actionEffective;
+        const bool causalFillReward =
+            activeAction >= 0 && activeAction < q_num_actions &&
+            (epoch_protection_events_by_action[activeAction] > 0 ||
+             epoch_useful_hits_by_action[activeAction] > 0);
         const double epochInstFills =
             static_cast<double>(epoch_inst_fills);
         const double epochDataFills =
@@ -611,9 +639,11 @@ LRUEmissary::dumpPreserveHist()
             q_has_inst_fill_off_baseline) {
             instFillDelta = q_inst_fill_off_baseline -
                 epochInstFills;
-            instFillReductionReward =
-                q_reward_inst_fill_reduction *
-                (std::max(0.0, instFillDelta) / 1000.0);
+            if (causalFillReward) {
+                instFillReductionReward =
+                    q_reward_inst_fill_reduction *
+                    (std::max(0.0, instFillDelta) / 1000.0);
+            }
             instFillRegressionPenalty =
                 q_penalty_inst_fill_regression *
                 (std::max(0.0, -instFillDelta) / 1000.0);
@@ -622,9 +652,11 @@ LRUEmissary::dumpPreserveHist()
         if (!activeOff && actionEffective && q_has_fill_off_baseline) {
             dataFillDelta = q_data_fill_off_baseline - epochDataFills;
             totalFillDelta = q_total_fill_off_baseline - epochTotalFills;
-            totalFillReductionReward =
-                q_reward_total_fill_reduction *
-                (std::max(0.0, totalFillDelta) / 1000.0);
+            if (causalFillReward) {
+                totalFillReductionReward =
+                    q_reward_total_fill_reduction *
+                    (std::max(0.0, totalFillDelta) / 1000.0);
+            }
             dataFillRegressionPenalty =
                 q_penalty_data_fill_regression *
                 (std::max(0.0, -dataFillDelta) / 1000.0);
@@ -925,6 +957,7 @@ LRUEmissary::qClearLineTracking(
     }
     repl_data->demandUsedSinceFlush = false;
     repl_data->protectedFromEviction = false;
+    repl_data->preserveGraceEpochs = 0;
     repl_data->admissionState = -1;
     repl_data->admissionAction = -1;
 }
@@ -935,6 +968,7 @@ LRUEmissary::qRecordAdmission(
 {
     repl_data->demandUsedSinceFlush = false;
     repl_data->protectedFromEviction = false;
+    repl_data->preserveGraceEpochs = q_learning_preserve_grace_epochs;
     repl_data->admissionState =
         q_has_last ? q_last_state : qState(0.0, 0.0, 0.0, 0.0, 0.0);
     repl_data->admissionAction =
@@ -1315,6 +1349,14 @@ LRUEmissary::qLogEpoch(
 {
     std::ofstream qOut;
     qOut.open(simout.directory() + "/q_learning.csv", std::fstream::app);
+    const bool activeActionInRange =
+        activeAction >= 0 && activeAction < q_num_actions;
+    const uint64_t activeActionProtectionEvents = activeActionInRange ?
+        epoch_protection_events_by_action[activeAction] : 0;
+    const uint64_t activeActionUsefulHits = activeActionInRange ?
+        epoch_useful_hits_by_action[activeAction] : 0;
+    const bool causalFillReward =
+        activeActionProtectionEvents > 0 || activeActionUsefulHits > 0;
     if (!q_log_header_written) {
         qOut << "tick,state,action,admission_rate,effective_preserve_ways,"
              << "next_action,next_admission_rate,next_effective_preserve_ways,"
@@ -1323,7 +1365,10 @@ LRUEmissary::qLogEpoch(
              << "preserve_victims,non_preserve_victims,preserve_hits,"
              << "demand_preserve_hits,useful_preserve_hits,"
              << "protection_events,wasted_protections,"
+             << "grace_retentions,grace_expirations,"
              << "useful_credit_reward,"
+             << "active_action_protection_events,"
+             << "active_action_useful_hits,causal_fill_reward,"
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
               << "admission_accepts,admission_rejects,admission_accept_pct,"
               << "action_effective,no_effect_epoch,q_value_updated,"
@@ -1364,7 +1409,12 @@ LRUEmissary::qLogEpoch(
          << "," << epoch_useful_preserve_hits
          << "," << epoch_protection_events
          << "," << epoch_wasted_protections
+         << "," << epoch_grace_retentions
+         << "," << epoch_grace_expirations
          << "," << epoch_useful_credit_reward
+         << "," << activeActionProtectionEvents
+         << "," << activeActionUsefulHits
+         << "," << (causalFillReward ? 1 : 0)
          << "," << epoch_inst_fills << "," << epoch_data_fills
          << "," << (epoch_inst_fills + epoch_data_fills)
          << "," << epoch_data_fills_preserved_set
@@ -1411,7 +1461,15 @@ LRUEmissary::resetEpochCounters()
     epoch_useful_preserve_hits = 0;
     epoch_protection_events = 0;
     epoch_wasted_protections = 0;
+    epoch_grace_retentions = 0;
+    epoch_grace_expirations = 0;
     epoch_useful_credit_reward = 0.0;
+    std::fill(
+        epoch_protection_events_by_action.begin(),
+        epoch_protection_events_by_action.end(), 0);
+    std::fill(
+        epoch_useful_hits_by_action.begin(),
+        epoch_useful_hits_by_action.end(), 0);
     epoch_admission_accepts = 0;
     epoch_admission_rejects = 0;
     epoch_preserve_victims = 0;
@@ -1501,6 +1559,10 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of demand hits after preserve avoided an LRU eviction"),
     ADD_STAT(qWastedProtections, statistics::units::Count::get(),
              "Number of protected lines cleared or invalidated before demand reuse"),
+    ADD_STAT(qGraceRetentions, statistics::units::Count::get(),
+             "Number of flushes that retained an unused line during admission grace"),
+    ADD_STAT(qGraceExpirations, statistics::units::Count::get(),
+             "Number of admitted lines cleared after admission grace expired"),
     ADD_STAT(qUsefulCreditUpdates, statistics::units::Count::get(),
              "Number of delayed useful-hit state-action credit updates"),
     ADD_STAT(qUsefulCreditReward, statistics::units::Count::get(),

@@ -53,6 +53,7 @@ RL_ALPHA=${RL_ALPHA:-0.2}
 RL_GAMMA=${RL_GAMMA:-0.8}
 RL_MIN_PRESERVE_WAYS=${RL_MIN_PRESERVE_WAYS:-0}
 RL_DEFAULT_ACTION=${RL_DEFAULT_ACTION:-0}
+RL_PRESERVE_GRACE_EPOCHS=${RL_PRESERVE_GRACE_EPOCHS:-3}
 RL_REUSE_CAP=${RL_REUSE_CAP:-32.0}
 RL_INST_BASELINE_ALPHA=${RL_INST_BASELINE_ALPHA:-0.25}
 RL_ACTION_ADMISSION_RATES=${RL_ACTION_ADMISSION_RATES:-0,3.125,6.25,12.5,25}
@@ -231,6 +232,7 @@ run_rl_suite() {
             --q-learning-target-occupancy="${RL_TARGET_OCCUPANCY}" \
             --q-learning-min-preserve-ways="${RL_MIN_PRESERVE_WAYS}" \
             --q-learning-default-action="${RL_DEFAULT_ACTION}" \
+            --q-learning-preserve-grace-epochs="${RL_PRESERVE_GRACE_EPOCHS}" \
             --q-learning-reuse-cap="${RL_REUSE_CAP}" \
             --q-learning-inst-baseline-alpha="${RL_INST_BASELINE_ALPHA}" \
             --q-action-admission-rates="${RL_ACTION_ADMISSION_RATES}" \

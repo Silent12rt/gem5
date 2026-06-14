@@ -115,6 +115,11 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_default_action = Param.Unsigned(
         0, "Initial and tie-break Q-learning action index"
     )
+    q_learning_preserve_grace_epochs = Param.Unsigned(
+        3,
+        "Flush epochs that a newly admitted preserve line may survive "
+        "without a demand reuse",
+    )
     q_learning_reuse_cap = Param.Float(
         32.0, "Cap applied to preserve reuse per accepted admission"
     )

@@ -60,13 +60,14 @@ class LRUEmissary : public Base
         CacheBlk *blk;
         bool demandUsedSinceFlush;
         bool protectedFromEviction;
+        int preserveGraceEpochs;
         int admissionState;
         int admissionAction;
 
         explicit LRUEmissaryReplData(CacheBlk *blk)
           : lastTouchTick(0), blk(blk), demandUsedSinceFlush(false),
-            protectedFromEviction(false), admissionState(-1),
-            admissionAction(-1)
+            protectedFromEviction(false), preserveGraceEpochs(0),
+            admissionState(-1), admissionAction(-1)
         {}
     };
 
@@ -98,6 +99,7 @@ class LRUEmissary : public Base
     double q_learning_target_occupancy;
     int q_learning_min_preserve_ways;
     int q_learning_default_action;
+    int q_learning_preserve_grace_epochs;
     double q_learning_reuse_cap;
     double q_learning_inst_baseline_alpha;
     double q_reward_non_preserve_victim;
@@ -150,12 +152,16 @@ class LRUEmissary : public Base
     std::vector<double> q_action_quality;
     std::vector<int> q_set_data_pollution_cooldowns;
     std::vector<uint64_t> q_pending_useful_credits;
+    mutable std::vector<uint64_t> epoch_protection_events_by_action;
+    mutable std::vector<uint64_t> epoch_useful_hits_by_action;
     Random::RandomPtr q_rng;
     mutable uint64_t epoch_preserve_hits;
     mutable uint64_t epoch_demand_preserve_hits;
     mutable uint64_t epoch_useful_preserve_hits;
     mutable uint64_t epoch_protection_events;
     mutable uint64_t epoch_wasted_protections;
+    mutable uint64_t epoch_grace_retentions;
+    mutable uint64_t epoch_grace_expirations;
     mutable double epoch_useful_credit_reward;
     mutable uint64_t epoch_admission_accepts;
     mutable uint64_t epoch_admission_rejects;
@@ -211,6 +217,8 @@ class LRUEmissary : public Base
         statistics::Scalar qProtectionEvents;
         statistics::Scalar qUsefulPreserveHits;
         statistics::Scalar qWastedProtections;
+        statistics::Scalar qGraceRetentions;
+        statistics::Scalar qGraceExpirations;
         statistics::Scalar qUsefulCreditUpdates;
         statistics::Scalar qUsefulCreditReward;
         statistics::Scalar qAuxiliaryTouchSuppressions;
