@@ -117,8 +117,8 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_preserve_grace_epochs = Param.Unsigned(
         3,
-        "Flush epochs that a newly admitted preserve line may survive "
-        "without a demand reuse",
+        "Flush epochs that a newly admitted line remains eligible for "
+        "victim-time rescue",
     )
     q_learning_reuse_cap = Param.Float(
         32.0, "Cap applied to preserve reuse per accepted admission"

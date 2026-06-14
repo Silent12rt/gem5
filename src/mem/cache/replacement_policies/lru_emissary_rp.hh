@@ -60,14 +60,15 @@ class LRUEmissary : public Base
         CacheBlk *blk;
         bool demandUsedSinceFlush;
         bool protectedFromEviction;
+        bool rescueConsumed;
         int preserveGraceEpochs;
         int admissionState;
         int admissionAction;
 
         explicit LRUEmissaryReplData(CacheBlk *blk)
           : lastTouchTick(0), blk(blk), demandUsedSinceFlush(false),
-            protectedFromEviction(false), preserveGraceEpochs(0),
-            admissionState(-1), admissionAction(-1)
+            protectedFromEviction(false), rescueConsumed(false),
+            preserveGraceEpochs(0), admissionState(-1), admissionAction(-1)
         {}
     };
 
@@ -162,6 +163,9 @@ class LRUEmissary : public Base
     mutable uint64_t epoch_wasted_protections;
     mutable uint64_t epoch_grace_retentions;
     mutable uint64_t epoch_grace_expirations;
+    mutable uint64_t epoch_eligible_demand_hits;
+    mutable uint64_t epoch_rescue_capacity_rejects;
+    mutable uint64_t epoch_one_shot_evictions;
     mutable double epoch_useful_credit_reward;
     mutable uint64_t epoch_admission_accepts;
     mutable uint64_t epoch_admission_rejects;
@@ -219,6 +223,9 @@ class LRUEmissary : public Base
         statistics::Scalar qWastedProtections;
         statistics::Scalar qGraceRetentions;
         statistics::Scalar qGraceExpirations;
+        statistics::Scalar qEligibleDemandHits;
+        statistics::Scalar qRescueCapacityRejects;
+        statistics::Scalar qOneShotEvictions;
         statistics::Scalar qUsefulCreditUpdates;
         statistics::Scalar qUsefulCreditReward;
         statistics::Scalar qAuxiliaryTouchSuppressions;
@@ -253,6 +260,8 @@ class LRUEmissary : public Base
   private:
     void checkLRU(const std::shared_ptr<ReplacementData>& replacement_data) const;
     void resetAll(const ReplacementCandidates& candidates, bool preservedWays) const;
+    ReplaceableEntry* qGetVictim(
+        const ReplacementCandidates& candidates) const;
     double qActionToAdmissionRate(int action) const;
     int qActionToPreserveWays(int action) const;
     int countSetPreserves(CacheBlk *blk) const;

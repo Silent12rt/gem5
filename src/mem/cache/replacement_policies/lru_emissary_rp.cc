@@ -133,6 +133,9 @@ LRUEmissary::LRUEmissary(const Params &p)
       epoch_wasted_protections(0),
       epoch_grace_retentions(0),
       epoch_grace_expirations(0),
+      epoch_eligible_demand_hits(0),
+      epoch_rescue_capacity_rejects(0),
+      epoch_one_shot_evictions(0),
       epoch_useful_credit_reward(0.0),
       epoch_admission_accepts(0),
       epoch_admission_rejects(0),
@@ -274,41 +277,50 @@ LRUEmissary::touch(
 {
     auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
         replacement_data);
+    const bool demandInstructionHit =
+        q_learning_preserve && pkt && pkt->isRead() &&
+        !pkt->isStarved() && pkt->req && pkt->req->isInstFetch();
+    if (demandInstructionHit && repl_data->admissionAction >= 0) {
+        repl_data->demandUsedSinceFlush = true;
+        if (!repl_data->protectedFromEviction) {
+            stats.qEligibleDemandHits++;
+            epoch_eligible_demand_hits++;
+        }
+    }
+
     if (pkt && pkt->isRead() && repl_data->blk &&
-        repl_data->blk->isPreserve()) {
+        repl_data->protectedFromEviction) {
         stats.preserveHits++;
         epoch_preserve_hits++;
 
-        const bool demandInstructionHit =
-            q_learning_preserve && !pkt->isStarved() && pkt->req &&
-            pkt->req->isInstFetch();
         if (demandInstructionHit) {
-            repl_data->demandUsedSinceFlush = true;
-            repl_data->preserveGraceEpochs = 0;
             stats.qDemandPreserveHits++;
             epoch_demand_preserve_hits++;
 
-            if (repl_data->protectedFromEviction &&
-                repl_data->admissionState >= 0 &&
+            if (repl_data->admissionState >= 0 &&
                 repl_data->admissionState < q_num_states &&
                 repl_data->admissionAction > 0 &&
                 repl_data->admissionAction < q_num_actions) {
+                const int creditedAction = repl_data->admissionAction;
                 const int creditIndex =
                     repl_data->admissionState * q_num_actions +
-                    repl_data->admissionAction;
+                    creditedAction;
                 q_pending_useful_credits[creditIndex]++;
-                epoch_useful_hits_by_action[
-                    repl_data->admissionAction]++;
+                epoch_useful_hits_by_action[creditedAction]++;
                 stats.qUsefulPreserveHits++;
                 epoch_useful_preserve_hits++;
-                repl_data->protectedFromEviction = false;
+                repl_data->blk->clearPreserve();
+                qClearLineTracking(repl_data, false);
             }
         }
     }
+    const bool preserveMark =
+        q_learning_preserve && pkt && pkt->isPreserve();
     if (!qApplyAdmission(replacement_data, pkt)) {
         return;
     }
-    if (q_learning_preserve && pkt && pkt->isRead() && pkt->isStarved()) {
+    if (preserveMark &&
+        (pkt->isStarved() || pkt->isEmissaryPreAdmitted())) {
         stats.qAuxiliaryTouchSuppressions++;
         return;
     }
@@ -348,9 +360,7 @@ LRUEmissary::reset(
             }
         }
     }
-    if (!qApplyAdmission(replacement_data, pkt)) {
-        return;
-    }
+    qApplyAdmission(replacement_data, pkt);
     reset(replacement_data);
 }
 
@@ -387,6 +397,10 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
 {
     assert(!candidates.empty());
     const_cast<LRUEmissary*>(this)->checkToFlushPreserveBits();
+
+    if (q_learning_preserve) {
+        return qGetVictim(candidates);
+    }
 
     ReplaceableEntry *victim_not_preserved = candidates[0];
     ReplaceableEntry *preserved_victim = candidates[0];
@@ -476,6 +490,128 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
     return selected_victim;
 }
 
+ReplaceableEntry*
+LRUEmissary::qGetVictim(const ReplacementCandidates& candidates) const
+{
+    ReplaceableEntry *ordinary_lru_victim = candidates[0];
+    bool ordinaryInitialized = false;
+
+    for (const auto& candidate : candidates) {
+        auto repl_data =
+            std::static_pointer_cast<LRUEmissaryReplData>(
+                candidate->replacementData);
+        if (repl_data->lastTouchTick == 0) {
+            auto *blk = static_cast<CacheBlk*>(candidate);
+            if (repl_data->protectedFromEviction || blk->isPreserve()) {
+                stats.preserveVictims++;
+                epoch_preserve_victims++;
+            } else {
+                stats.nonPreserveVictims++;
+                epoch_non_preserve_victims++;
+            }
+            return candidate;
+        }
+        if (!ordinaryInitialized ||
+            repl_data->lastTouchTick <
+                std::static_pointer_cast<LRUEmissaryReplData>(
+                    ordinary_lru_victim->replacementData)->lastTouchTick) {
+            ordinary_lru_victim = candidate;
+            ordinaryInitialized = true;
+        }
+    }
+
+    auto *ordinaryBlk = static_cast<CacheBlk*>(ordinary_lru_victim);
+    auto ordinaryRepl =
+        std::static_pointer_cast<LRUEmissaryReplData>(
+            ordinary_lru_victim->replacementData);
+
+    // A rescued line receives exactly one reprieve. If it reaches the LRU
+    // position again before a demand reuse, evict it and charge it as wasted.
+    if (ordinaryRepl->protectedFromEviction) {
+        stats.preserveVictims++;
+        epoch_preserve_victims++;
+        stats.qOneShotEvictions++;
+        epoch_one_shot_evictions++;
+        ordinaryBlk->clearPreserve();
+        const_cast<LRUEmissary*>(this)->qClearLineTracking(
+            ordinaryRepl, true);
+        return ordinary_lru_victim;
+    }
+
+    const bool rescueEligible =
+        ordinaryRepl->admissionState >= 0 &&
+        ordinaryRepl->admissionAction > 0 &&
+        ordinaryRepl->admissionAction < q_num_actions &&
+        !ordinaryRepl->rescueConsumed;
+    if (rescueEligible) {
+        int activeRescues = 0;
+        for (const auto& candidate : candidates) {
+            auto repl_data =
+                std::static_pointer_cast<LRUEmissaryReplData>(
+                    candidate->replacementData);
+            activeRescues += repl_data->protectedFromEviction ? 1 : 0;
+        }
+
+        const int rescueCapacity =
+            qActionToPreserveWays(ordinaryRepl->admissionAction);
+        if (activeRescues < rescueCapacity) {
+            ReplaceableEntry *alternative = nullptr;
+            for (const auto& candidate : candidates) {
+                if (candidate == ordinary_lru_victim) {
+                    continue;
+                }
+                auto repl_data =
+                    std::static_pointer_cast<LRUEmissaryReplData>(
+                        candidate->replacementData);
+                if (repl_data->protectedFromEviction) {
+                    continue;
+                }
+                if (!alternative ||
+                    repl_data->lastTouchTick <
+                        std::static_pointer_cast<LRUEmissaryReplData>(
+                            alternative->replacementData)->lastTouchTick) {
+                    alternative = candidate;
+                }
+            }
+
+            if (alternative) {
+                ordinaryRepl->protectedFromEviction = true;
+                ordinaryRepl->rescueConsumed = true;
+                ordinaryRepl->preserveGraceEpochs = 0;
+                ordinaryBlk->setPreserve();
+                epoch_protection_events_by_action[
+                    ordinaryRepl->admissionAction]++;
+                stats.qProtectionEvents++;
+                epoch_protection_events++;
+
+                auto *alternativeBlk = static_cast<CacheBlk*>(alternative);
+                auto alternativeRepl =
+                    std::static_pointer_cast<LRUEmissaryReplData>(
+                        alternative->replacementData);
+                if (alternativeRepl->protectedFromEviction ||
+                    alternativeBlk->isPreserve()) {
+                    stats.preserveVictims++;
+                    epoch_preserve_victims++;
+                } else {
+                    stats.nonPreserveVictims++;
+                    epoch_non_preserve_victims++;
+                }
+                return alternative;
+            }
+        } else {
+            stats.qRescueCapacityRejects++;
+            epoch_rescue_capacity_rejects++;
+        }
+    }
+
+    if (ordinaryBlk->isPreserve()) {
+        ordinaryBlk->clearPreserve();
+    }
+    stats.nonPreserveVictims++;
+    epoch_non_preserve_victims++;
+    return ordinary_lru_victim;
+}
+
 std::shared_ptr<ReplacementData>
 LRUEmissary::instantiateEntry()
 {
@@ -529,30 +665,36 @@ LRUEmissary::dumpPreserveHist()
             auto repl_data =
                 std::static_pointer_cast<LRUEmissaryReplData>(
                     entry->replacementData);
-            const bool usedSinceFlush = q_learning_preserve ?
-                repl_data->demandUsedSinceFlush : blk->isUsed();
-            if (blk->isPreserve() && !usedSinceFlush) {
-                if (q_learning_preserve &&
-                    repl_data->preserveGraceEpochs > 0) {
-                    repl_data->preserveGraceEpochs--;
-                    stats.qGraceRetentions++;
-                    epoch_grace_retentions++;
-                } else {
-                    if (q_learning_preserve &&
-                        repl_data->admissionAction >= 0) {
+            if (q_learning_preserve) {
+                if (repl_data->protectedFromEviction) {
+                    numPreserved++;
+                } else if (repl_data->admissionAction >= 0) {
+                    if (repl_data->preserveGraceEpochs > 0) {
+                        repl_data->preserveGraceEpochs--;
+                        stats.qGraceRetentions++;
+                        epoch_grace_retentions++;
+                    } else {
                         stats.qGraceExpirations++;
                         epoch_grace_expirations++;
+                        stats.preserveClears++;
+                        epoch_preserve_clears++;
+                        qClearLineTracking(repl_data, false);
                     }
-                    stats.preserveClears++;
-                    epoch_preserve_clears++;
-                    qClearLineTracking(repl_data, true);
+                } else if (blk->isPreserve()) {
+                    // RL mode only sets the real preserve bit after rescue.
+                    // Clear stale bits propagated from upper cache levels.
                     blk->clearPreserve();
                 }
-            } else if (q_learning_preserve && !blk->isPreserve()) {
-                qClearLineTracking(repl_data, false);
-            }
-            if (blk->isPreserve()) {
-                numPreserved++;
+            } else {
+                const bool usedSinceFlush = blk->isUsed();
+                if (blk->isPreserve() && !usedSinceFlush) {
+                    stats.preserveClears++;
+                    epoch_preserve_clears++;
+                    blk->clearPreserve();
+                }
+                if (blk->isPreserve()) {
+                    numPreserved++;
+                }
             }
             repl_data->demandUsedSinceFlush = false;
             blk->clearUsed();
@@ -875,8 +1017,11 @@ LRUEmissary::qApplyAdmission(
 
     auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
         replacement_data);
-    if (repl_data->blk && repl_data->blk->isPreserve() &&
-        repl_data->admissionAction >= 0) {
+    if (repl_data->admissionAction >= 0) {
+        pkt->setPreserve(false);
+        if (repl_data->blk && !repl_data->protectedFromEviction) {
+            repl_data->blk->clearPreserve();
+        }
         return true;
     }
 
@@ -886,23 +1031,6 @@ LRUEmissary::qApplyAdmission(
             repl_data->blk->clearPreserve();
         }
         stats.qAdmissionRejects++;
-        epoch_admission_rejects++;
-        return false;
-    }
-
-    int existingSetPreserves = countSetPreserves(repl_data->blk);
-    if (repl_data->blk && repl_data->blk->isPreserve() &&
-        repl_data->admissionAction < 0) {
-        existingSetPreserves--;
-    }
-    if (q_learning_set_guard && repl_data->blk &&
-        existingSetPreserves >= effective_preserve_ways) {
-        pkt->setPreserve(false);
-        if (repl_data->blk->isPreserve()) {
-            repl_data->blk->clearPreserve();
-        }
-        stats.qAdmissionRejects++;
-        stats.qAdmissionGuardRejects++;
         epoch_admission_rejects++;
         return false;
     }
@@ -921,6 +1049,10 @@ LRUEmissary::qApplyAdmission(
 
     if (pkt->isEmissaryPreAdmitted()) {
         qRecordAdmission(repl_data);
+        pkt->setPreserve(false);
+        if (repl_data->blk) {
+            repl_data->blk->clearPreserve();
+        }
         stats.qAdmissionAccepts++;
         epoch_admission_accepts++;
         return true;
@@ -932,6 +1064,10 @@ LRUEmissary::qApplyAdmission(
         static_cast<double>(q_rng->random<uint32_t>(0, 9999)) / 100.0;
     if (sample < rate) {
         qRecordAdmission(repl_data);
+        pkt->setPreserve(false);
+        if (repl_data->blk) {
+            repl_data->blk->clearPreserve();
+        }
         stats.qAdmissionAccepts++;
         epoch_admission_accepts++;
         return true;
@@ -957,6 +1093,7 @@ LRUEmissary::qClearLineTracking(
     }
     repl_data->demandUsedSinceFlush = false;
     repl_data->protectedFromEviction = false;
+    repl_data->rescueConsumed = false;
     repl_data->preserveGraceEpochs = 0;
     repl_data->admissionState = -1;
     repl_data->admissionAction = -1;
@@ -968,6 +1105,7 @@ LRUEmissary::qRecordAdmission(
 {
     repl_data->demandUsedSinceFlush = false;
     repl_data->protectedFromEviction = false;
+    repl_data->rescueConsumed = false;
     repl_data->preserveGraceEpochs = q_learning_preserve_grace_epochs;
     repl_data->admissionState =
         q_has_last ? q_last_state : qState(0.0, 0.0, 0.0, 0.0, 0.0);
@@ -1366,6 +1504,8 @@ LRUEmissary::qLogEpoch(
              << "demand_preserve_hits,useful_preserve_hits,"
              << "protection_events,wasted_protections,"
              << "grace_retentions,grace_expirations,"
+             << "eligible_demand_hits,rescue_capacity_rejects,"
+             << "one_shot_evictions,"
              << "useful_credit_reward,"
              << "active_action_protection_events,"
              << "active_action_useful_hits,causal_fill_reward,"
@@ -1411,6 +1551,9 @@ LRUEmissary::qLogEpoch(
          << "," << epoch_wasted_protections
          << "," << epoch_grace_retentions
          << "," << epoch_grace_expirations
+         << "," << epoch_eligible_demand_hits
+         << "," << epoch_rescue_capacity_rejects
+         << "," << epoch_one_shot_evictions
          << "," << epoch_useful_credit_reward
          << "," << activeActionProtectionEvents
          << "," << activeActionUsefulHits
@@ -1463,6 +1606,9 @@ LRUEmissary::resetEpochCounters()
     epoch_wasted_protections = 0;
     epoch_grace_retentions = 0;
     epoch_grace_expirations = 0;
+    epoch_eligible_demand_hits = 0;
+    epoch_rescue_capacity_rejects = 0;
+    epoch_one_shot_evictions = 0;
     epoch_useful_credit_reward = 0.0;
     std::fill(
         epoch_protection_events_by_action.begin(),
@@ -1563,6 +1709,12 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of flushes that retained an unused line during admission grace"),
     ADD_STAT(qGraceExpirations, statistics::units::Count::get(),
              "Number of admitted lines cleared after admission grace expired"),
+    ADD_STAT(qEligibleDemandHits, statistics::units::Count::get(),
+             "Number of demand hits on eligible lines before victim-time rescue"),
+    ADD_STAT(qRescueCapacityRejects, statistics::units::Count::get(),
+             "Number of eligible LRU victims not rescued because the set rescue quota was full"),
+    ADD_STAT(qOneShotEvictions, statistics::units::Count::get(),
+             "Number of rescued lines evicted on their next LRU victim attempt"),
     ADD_STAT(qUsefulCreditUpdates, statistics::units::Count::get(),
              "Number of delayed useful-hit state-action credit updates"),
     ADD_STAT(qUsefulCreditReward, statistics::units::Count::get(),
