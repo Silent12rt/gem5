@@ -58,9 +58,15 @@ class LRUEmissary : public Base
     {
         Tick lastTouchTick;
         CacheBlk *blk;
+        bool demandUsedSinceFlush;
+        bool protectedFromEviction;
+        int admissionState;
+        int admissionAction;
 
         explicit LRUEmissaryReplData(CacheBlk *blk)
-          : lastTouchTick(0), blk(blk)
+          : lastTouchTick(0), blk(blk), demandUsedSinceFlush(false),
+            protectedFromEviction(false), admissionState(-1),
+            admissionAction(-1)
         {}
     };
 
@@ -143,8 +149,14 @@ class LRUEmissary : public Base
     std::vector<int> q_action_cooldowns;
     std::vector<double> q_action_quality;
     std::vector<int> q_set_data_pollution_cooldowns;
+    std::vector<uint64_t> q_pending_useful_credits;
     Random::RandomPtr q_rng;
     mutable uint64_t epoch_preserve_hits;
+    mutable uint64_t epoch_demand_preserve_hits;
+    mutable uint64_t epoch_useful_preserve_hits;
+    mutable uint64_t epoch_protection_events;
+    mutable uint64_t epoch_wasted_protections;
+    mutable double epoch_useful_credit_reward;
     mutable uint64_t epoch_admission_accepts;
     mutable uint64_t epoch_admission_rejects;
     mutable uint64_t epoch_preserve_victims;
@@ -195,6 +207,13 @@ class LRUEmissary : public Base
         statistics::Scalar qNoEffectEpochs;
         statistics::Scalar qNoEffectActionForces;
         statistics::Scalar preserveHits;
+        statistics::Scalar qDemandPreserveHits;
+        statistics::Scalar qProtectionEvents;
+        statistics::Scalar qUsefulPreserveHits;
+        statistics::Scalar qWastedProtections;
+        statistics::Scalar qUsefulCreditUpdates;
+        statistics::Scalar qUsefulCreditReward;
+        statistics::Scalar qAuxiliaryTouchSuppressions;
     } stats;
 
     explicit LRUEmissary(const Params &p);
@@ -243,6 +262,12 @@ class LRUEmissary : public Base
     bool qActionQualityBlocked(int action) const;
     void qTickActionCooldowns();
     bool qRecoverActionQuality();
+    void qClearLineTracking(
+        const std::shared_ptr<LRUEmissaryReplData>& repl_data,
+        bool countWastedProtection);
+    void qRecordAdmission(
+        const std::shared_ptr<LRUEmissaryReplData>& repl_data) const;
+    double qApplyUsefulHitCredits();
     int qChooseAction(int state);
     void qUpdate(
         int nextState, double reward, double saturatedPct,

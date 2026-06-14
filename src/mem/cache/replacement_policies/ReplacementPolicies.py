@@ -142,7 +142,8 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0.0, "Penalty weight for saturated sets above target"
     )
     q_reward_preserve_hit = Param.Float(
-        0.2, "Reward weight for reuse per accepted preserve admission"
+        0.2,
+        "Delayed reward weight for a demand hit after preserve avoided eviction",
     )
     q_reward_inst_fill_reduction = Param.Float(
         8.0, "Reward weight when instruction-side fills fall below OFF baseline"

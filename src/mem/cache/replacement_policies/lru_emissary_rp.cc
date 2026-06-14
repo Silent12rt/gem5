@@ -125,6 +125,11 @@ LRUEmissary::LRUEmissary(const Params &p)
             Random::genRandom(static_cast<uint32_t>(q_learning_seed)) :
             Random::genRandom()),
       epoch_preserve_hits(0),
+      epoch_demand_preserve_hits(0),
+      epoch_useful_preserve_hits(0),
+      epoch_protection_events(0),
+      epoch_wasted_protections(0),
+      epoch_useful_credit_reward(0.0),
       epoch_admission_accepts(0),
       epoch_admission_rejects(0),
       epoch_preserve_victims(0),
@@ -200,6 +205,7 @@ LRUEmissary::LRUEmissary(const Params &p)
     q_values.assign(q_num_states * q_num_actions, 0.0);
     q_action_cooldowns.assign(q_num_actions, 0);
     q_action_quality.assign(q_num_actions, 0.0);
+    q_pending_useful_credits.assign(q_num_states * q_num_actions, 0);
     if (q_learning_preserve) {
         q_last_state = qState(0.0, 0.0, 0.0, 0.0, 0.0);
         q_last_action = q_learning_default_action;
@@ -215,8 +221,10 @@ LRUEmissary::LRUEmissary(const Params &p)
 void
 LRUEmissary::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
 {
-    std::static_pointer_cast<LRUEmissaryReplData>(
-        replacement_data)->lastTouchTick = Tick(0);
+    auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
+        replacement_data);
+    qClearLineTracking(repl_data, true);
+    repl_data->lastTouchTick = Tick(0);
 }
 
 void
@@ -262,8 +270,35 @@ LRUEmissary::touch(
         repl_data->blk->isPreserve()) {
         stats.preserveHits++;
         epoch_preserve_hits++;
+
+        const bool demandInstructionHit =
+            q_learning_preserve && !pkt->isStarved() && pkt->req &&
+            pkt->req->isInstFetch();
+        if (demandInstructionHit) {
+            repl_data->demandUsedSinceFlush = true;
+            stats.qDemandPreserveHits++;
+            epoch_demand_preserve_hits++;
+
+            if (repl_data->protectedFromEviction &&
+                repl_data->admissionState >= 0 &&
+                repl_data->admissionState < q_num_states &&
+                repl_data->admissionAction > 0 &&
+                repl_data->admissionAction < q_num_actions) {
+                const int creditIndex =
+                    repl_data->admissionState * q_num_actions +
+                    repl_data->admissionAction;
+                q_pending_useful_credits[creditIndex]++;
+                stats.qUsefulPreserveHits++;
+                epoch_useful_preserve_hits++;
+                repl_data->protectedFromEviction = false;
+            }
+        }
     }
     if (!qApplyAdmission(replacement_data, pkt)) {
+        return;
+    }
+    if (q_learning_preserve && pkt && pkt->isRead() && pkt->isStarved()) {
+        stats.qAuxiliaryTouchSuppressions++;
         return;
     }
     touch(replacement_data);
@@ -283,9 +318,12 @@ LRUEmissary::reset(
     const std::shared_ptr<ReplacementData>& replacement_data,
     const PacketPtr pkt)
 {
+    auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
+        replacement_data);
+    if (q_learning_preserve) {
+        qClearLineTracking(repl_data, false);
+    }
     if (q_learning_preserve && pkt && pkt->isRead() && pkt->req) {
-        auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
-            replacement_data);
         if (pkt->req->isInstFetch()) {
             stats.qInstFills++;
             epoch_inst_fills++;
@@ -341,6 +379,7 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
 
     ReplaceableEntry *victim_not_preserved = candidates[0];
     ReplaceableEntry *preserved_victim = candidates[0];
+    ReplaceableEntry *ordinary_lru_victim = candidates[0];
     int num_not_preserved = 0;
     int num_preserved = 0;
     bool reset_preserved = true;
@@ -362,6 +401,11 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
         }
 
         auto *blk = static_cast<CacheBlk*>(candidate);
+        if (repl->lastTouchTick <
+            std::static_pointer_cast<LRUEmissaryReplData>(
+                ordinary_lru_victim->replacementData)->lastTouchTick) {
+            ordinary_lru_victim = candidate;
+        }
         if (blk->isPreserve()) {
             num_preserved++;
             if (num_preserved == 1 ||
@@ -390,14 +434,33 @@ LRUEmissary::getVictim(const ReplacementCandidates& candidates) const
         resetAll(candidates, false);
     }
 
+    ReplaceableEntry *selected_victim = victim_not_preserved;
     if (num_preserved > effective_preserve_ways) {
         stats.preserveVictims++;
         epoch_preserve_victims++;
-        return preserved_victim;
+        selected_victim = preserved_victim;
+    } else {
+        stats.nonPreserveVictims++;
+        epoch_non_preserve_victims++;
     }
-    stats.nonPreserveVictims++;
-    epoch_non_preserve_victims++;
-    return victim_not_preserved;
+
+    if (q_learning_preserve &&
+        selected_victim != ordinary_lru_victim) {
+        auto *ordinary_blk = static_cast<CacheBlk*>(ordinary_lru_victim);
+        auto ordinary_repl =
+            std::static_pointer_cast<LRUEmissaryReplData>(
+                ordinary_lru_victim->replacementData);
+        if (ordinary_blk->isPreserve() &&
+            ordinary_repl->admissionState >= 0 &&
+            ordinary_repl->admissionAction > 0 &&
+            !ordinary_repl->protectedFromEviction) {
+            ordinary_repl->protectedFromEviction = true;
+            stats.qProtectionEvents++;
+            epoch_protection_events++;
+        }
+    }
+
+    return selected_victim;
 }
 
 std::shared_ptr<ReplacementData>
@@ -450,14 +513,23 @@ LRUEmissary::dumpPreserveHist()
         for (int way = 0; way < numWays; way++) {
             auto *entry = indexingPolicy->getEntry(set, way);
             auto *blk = static_cast<CacheBlk*>(entry);
+            auto repl_data =
+                std::static_pointer_cast<LRUEmissaryReplData>(
+                    entry->replacementData);
             if (blk->isPreserve()) {
                 numPreserved++;
             }
-            if (blk->isPreserve() && !blk->isUsed()) {
+            const bool usedSinceFlush = q_learning_preserve ?
+                repl_data->demandUsedSinceFlush : blk->isUsed();
+            if (blk->isPreserve() && !usedSinceFlush) {
                 stats.preserveClears++;
                 epoch_preserve_clears++;
+                qClearLineTracking(repl_data, true);
                 blk->clearPreserve();
+            } else if (q_learning_preserve && !blk->isPreserve()) {
+                qClearLineTracking(repl_data, false);
             }
+            repl_data->demandUsedSinceFlush = false;
             blk->clearUsed();
         }
         totalPreserved += numPreserved;
@@ -501,23 +573,20 @@ LRUEmissary::dumpPreserveHist()
         (admissionTotal ?
             100.0 * epoch_admission_accepts / admissionTotal : 0.0);
     const double preserveReusePerAdmission = epoch_admission_accepts ?
-        static_cast<double>(epoch_preserve_hits) /
+        static_cast<double>(epoch_useful_preserve_hits) /
             static_cast<double>(epoch_admission_accepts) : 0.0;
-    const double cappedPreserveReuse =
-        std::min(preserveReusePerAdmission, q_learning_reuse_cap);
     const double admittedPreserveK =
         static_cast<double>(epoch_admission_accepts) / 1000.0;
 
     if (q_learning_preserve && numSets > 0) {
+        qApplyUsefulHitCredits();
         const int activeAction = epochAction;
         const bool activeOff =
             qActionToAdmissionRate(activeAction) <= 0.0 ||
             qActionToPreserveWays(activeAction) <= 0;
-        const bool actionEffective =
-            epoch_admission_accepts > 0 ||
-            epoch_preserve_hits > 0 ||
-            totalPreserved > 0;
+        const bool actionEffective = epoch_admission_accepts > 0;
         const bool noEffectEpoch = !activeOff && !actionEffective;
+        const bool scoreActiveAction = !activeOff && actionEffective;
         const double epochInstFills =
             static_cast<double>(epoch_inst_fills);
         const double epochDataFills =
@@ -594,39 +663,40 @@ LRUEmissary::dumpPreserveHist()
             stats.qInstFillBaselineUpdates++;
         }
 
-        const double reuseReward = noEffectEpoch ? 0.0 :
-            q_reward_preserve_hit * cappedPreserveReuse;
-        const double nonPreserveVictimReward = noEffectEpoch ? 0.0 :
+        // Useful preserve hits are delayed credits applied directly to the
+        // state-action pair that admitted the protected line.
+        const double reuseReward = 0.0;
+        const double nonPreserveVictimReward = !scoreActiveAction ? 0.0 :
             q_reward_non_preserve_victim *
                 (static_cast<double>(epoch_non_preserve_victims) / 10000.0);
-        const double instFillPenalty = noEffectEpoch ? 0.0 :
+        const double instFillPenalty = !scoreActiveAction ? 0.0 :
             q_penalty_inst_fill *
                 (static_cast<double>(epoch_inst_fills) / 1000.0);
-        const double dataFillPenalty = noEffectEpoch ? 0.0 :
+        const double dataFillPenalty = !scoreActiveAction ? 0.0 :
             q_penalty_data_fill *
                 (static_cast<double>(epoch_data_fills_preserved_set) /
                     1000.0);
-        const double preserveVictimPenalty = noEffectEpoch ? 0.0 :
+        const double preserveVictimPenalty = !scoreActiveAction ? 0.0 :
             q_penalty_preserve_victim *
                 (static_cast<double>(epoch_preserve_victims) / 1000.0);
-        const double admittedPreservePenalty = noEffectEpoch ? 0.0 :
+        const double admittedPreservePenalty = !scoreActiveAction ? 0.0 :
             q_penalty_admitted_preserve * admittedPreserveK;
-        const double admissionPressurePenalty = noEffectEpoch ? 0.0 :
+        const double admissionPressurePenalty = !scoreActiveAction ? 0.0 :
             q_penalty_admission_pressure * admissionAcceptPct;
-        const double preserveClearPenalty = noEffectEpoch ? 0.0 :
+        const double preserveClearPenalty = !scoreActiveAction ? 0.0 :
             q_penalty_preserve_clear *
                 (static_cast<double>(epoch_preserve_clears) / 1000.0);
-        const double preserveOccupancyPenalty = noEffectEpoch ? 0.0 :
+        const double preserveOccupancyPenalty = !scoreActiveAction ? 0.0 :
             q_penalty_preserve_occupancy *
                 std::max(0.0,
                     preserveOccupancyPct - q_learning_target_occupancy);
-        const double quotaPenalty = noEffectEpoch ? 0.0 :
+        const double quotaPenalty = !scoreActiveAction ? 0.0 :
             q_penalty_quota_exceeded *
                 static_cast<double>(epoch_quota_exceeded_sets);
-        const double saturationPenalty = noEffectEpoch ? 0.0 :
+        const double saturationPenalty = !scoreActiveAction ? 0.0 :
             q_penalty_saturation *
                 std::max(0.0, saturatedPct - q_learning_target_saturation);
-        const double reward = noEffectEpoch ? 0.0 :
+        const double reward = !scoreActiveAction ? 0.0 :
             reuseReward + nonPreserveVictimReward +
                 instFillReductionReward + totalFillReductionReward -
                 instFillRegressionPenalty -
@@ -773,20 +843,32 @@ LRUEmissary::qApplyAdmission(
 
     auto repl_data = std::static_pointer_cast<LRUEmissaryReplData>(
         replacement_data);
-    if (repl_data->blk && repl_data->blk->isPreserve()) {
+    if (repl_data->blk && repl_data->blk->isPreserve() &&
+        repl_data->admissionAction >= 0) {
         return true;
     }
 
     if (effective_preserve_ways <= 0) {
         pkt->setPreserve(false);
+        if (repl_data->blk && repl_data->blk->isPreserve()) {
+            repl_data->blk->clearPreserve();
+        }
         stats.qAdmissionRejects++;
         epoch_admission_rejects++;
         return false;
     }
 
+    int existingSetPreserves = countSetPreserves(repl_data->blk);
+    if (repl_data->blk && repl_data->blk->isPreserve() &&
+        repl_data->admissionAction < 0) {
+        existingSetPreserves--;
+    }
     if (q_learning_set_guard && repl_data->blk &&
-        countSetPreserves(repl_data->blk) >= effective_preserve_ways) {
+        existingSetPreserves >= effective_preserve_ways) {
         pkt->setPreserve(false);
+        if (repl_data->blk->isPreserve()) {
+            repl_data->blk->clearPreserve();
+        }
         stats.qAdmissionRejects++;
         stats.qAdmissionGuardRejects++;
         epoch_admission_rejects++;
@@ -795,6 +877,9 @@ LRUEmissary::qApplyAdmission(
 
     if (qSetDataPollutionBlocked(repl_data->blk)) {
         pkt->setPreserve(false);
+        if (repl_data->blk && repl_data->blk->isPreserve()) {
+            repl_data->blk->clearPreserve();
+        }
         stats.qAdmissionRejects++;
         stats.qSetDataPollutionRejects++;
         epoch_admission_rejects++;
@@ -803,6 +888,7 @@ LRUEmissary::qApplyAdmission(
     }
 
     if (pkt->isEmissaryPreAdmitted()) {
+        qRecordAdmission(repl_data);
         stats.qAdmissionAccepts++;
         epoch_admission_accepts++;
         return true;
@@ -813,15 +899,72 @@ LRUEmissary::qApplyAdmission(
     const double sample =
         static_cast<double>(q_rng->random<uint32_t>(0, 9999)) / 100.0;
     if (sample < rate) {
+        qRecordAdmission(repl_data);
         stats.qAdmissionAccepts++;
         epoch_admission_accepts++;
         return true;
     }
 
     pkt->setPreserve(false);
+    if (repl_data->blk && repl_data->blk->isPreserve()) {
+        repl_data->blk->clearPreserve();
+    }
     stats.qAdmissionRejects++;
     epoch_admission_rejects++;
     return false;
+}
+
+void
+LRUEmissary::qClearLineTracking(
+    const std::shared_ptr<LRUEmissaryReplData>& repl_data,
+    bool countWastedProtection)
+{
+    if (countWastedProtection && repl_data->protectedFromEviction) {
+        stats.qWastedProtections++;
+        epoch_wasted_protections++;
+    }
+    repl_data->demandUsedSinceFlush = false;
+    repl_data->protectedFromEviction = false;
+    repl_data->admissionState = -1;
+    repl_data->admissionAction = -1;
+}
+
+void
+LRUEmissary::qRecordAdmission(
+    const std::shared_ptr<LRUEmissaryReplData>& repl_data) const
+{
+    repl_data->demandUsedSinceFlush = false;
+    repl_data->protectedFromEviction = false;
+    repl_data->admissionState =
+        q_has_last ? q_last_state : qState(0.0, 0.0, 0.0, 0.0, 0.0);
+    repl_data->admissionAction =
+        q_has_last ? q_last_action : q_learning_default_action;
+}
+
+double
+LRUEmissary::qApplyUsefulHitCredits()
+{
+    epoch_useful_credit_reward = 0.0;
+    for (std::size_t index = 0;
+         index < q_pending_useful_credits.size(); index++) {
+        const uint64_t hits = q_pending_useful_credits[index];
+        if (hits == 0) {
+            continue;
+        }
+
+        const double creditedHits = std::min(
+            static_cast<double>(hits), q_learning_reuse_cap);
+        const double creditReward =
+            q_reward_preserve_hit * creditedHits;
+        double& oldValue = q_values[index];
+        oldValue += q_learning_alpha * (creditReward - oldValue);
+
+        epoch_useful_credit_reward += creditReward;
+        stats.qUsefulCreditUpdates++;
+        stats.qUsefulCreditReward += creditReward;
+        q_pending_useful_credits[index] = 0;
+    }
+    return epoch_useful_credit_reward;
 }
 
 int
@@ -1178,6 +1321,9 @@ LRUEmissary::qLogEpoch(
              << "reward,"
              << "saturated_pct,preserve_occupancy_pct,preserve_victim_pct,"
              << "preserve_victims,non_preserve_victims,preserve_hits,"
+             << "demand_preserve_hits,useful_preserve_hits,"
+             << "protection_events,wasted_protections,"
+             << "useful_credit_reward,"
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
               << "admission_accepts,admission_rejects,admission_accept_pct,"
               << "action_effective,no_effect_epoch,q_value_updated,"
@@ -1214,6 +1360,11 @@ LRUEmissary::qLogEpoch(
          << saturatedPct << "," << preserveOccupancyPct << ","
          << preserveVictimPct << "," << epoch_preserve_victims << ","
          << epoch_non_preserve_victims << "," << epoch_preserve_hits
+         << "," << epoch_demand_preserve_hits
+         << "," << epoch_useful_preserve_hits
+         << "," << epoch_protection_events
+         << "," << epoch_wasted_protections
+         << "," << epoch_useful_credit_reward
          << "," << epoch_inst_fills << "," << epoch_data_fills
          << "," << (epoch_inst_fills + epoch_data_fills)
          << "," << epoch_data_fills_preserved_set
@@ -1256,6 +1407,11 @@ void
 LRUEmissary::resetEpochCounters()
 {
     epoch_preserve_hits = 0;
+    epoch_demand_preserve_hits = 0;
+    epoch_useful_preserve_hits = 0;
+    epoch_protection_events = 0;
+    epoch_wasted_protections = 0;
+    epoch_useful_credit_reward = 0.0;
     epoch_admission_accepts = 0;
     epoch_admission_rejects = 0;
     epoch_preserve_victims = 0;
@@ -1336,7 +1492,21 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
     ADD_STAT(qNoEffectActionForces, statistics::units::Count::get(),
              "Number of no-effect epochs that forced the next action to OFF"),
     ADD_STAT(preserveHits, statistics::units::Count::get(),
-             "Number of cache hits on preserved lines")
+             "Number of cache hits on preserved lines"),
+    ADD_STAT(qDemandPreserveHits, statistics::units::Count::get(),
+             "Number of demand instruction hits on preserved lines"),
+    ADD_STAT(qProtectionEvents, statistics::units::Count::get(),
+             "Number of preserved lines retained instead of the ordinary LRU victim"),
+    ADD_STAT(qUsefulPreserveHits, statistics::units::Count::get(),
+             "Number of demand hits after preserve avoided an LRU eviction"),
+    ADD_STAT(qWastedProtections, statistics::units::Count::get(),
+             "Number of protected lines cleared or invalidated before demand reuse"),
+    ADD_STAT(qUsefulCreditUpdates, statistics::units::Count::get(),
+             "Number of delayed useful-hit state-action credit updates"),
+    ADD_STAT(qUsefulCreditReward, statistics::units::Count::get(),
+             "Total delayed reward attributed to useful preserve hits"),
+    ADD_STAT(qAuxiliaryTouchSuppressions, statistics::units::Count::get(),
+             "Number of auxiliary EMISSARY hits prevented from refreshing LRU recency")
 {
 }
 
