@@ -155,7 +155,7 @@ class LRUEmissary : public Base
     std::vector<int> q_action_cooldowns;
     std::vector<double> q_action_quality;
     std::vector<uint64_t> q_action_warmup_attempts;
-    std::vector<uint64_t> q_action_effective_samples;
+    std::vector<uint64_t> q_action_rescue_samples;
     std::vector<int> q_set_data_pollution_cooldowns;
     std::vector<uint64_t> q_pending_useful_credits;
     std::vector<uint64_t> q_pending_wasted_penalties;
@@ -203,7 +203,7 @@ class LRUEmissary : public Base
         statistics::Scalar qLearningExploits;
         statistics::Scalar qLearningWarmupSelections;
         statistics::Scalar qLearningTieBreaks;
-        statistics::Scalar qLearningEffectiveActionEpochs;
+        statistics::Scalar qLearningRescueOutcomeSamples;
         statistics::Scalar qLearningActionSum;
         statistics::Scalar qLearningPreserveWaySum;
         statistics::Scalar qAdmissionAccepts;
@@ -294,6 +294,7 @@ class LRUEmissary : public Base
     void qClearLineTracking(
         const std::shared_ptr<LRUEmissaryReplData>& repl_data,
         bool countWastedProtection);
+    void qRecordRescueOutcome(int action);
     void qRecordAdmission(
         const std::shared_ptr<LRUEmissaryReplData>& repl_data) const;
     double qApplyDelayedRescueCredits();

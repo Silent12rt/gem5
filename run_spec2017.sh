@@ -222,7 +222,7 @@ echo "  L2: ${L2_SIZE}, assoc ${L2_ASSOC}, preserve_cap ${L2_PRESERVE_WAYS}/${L2
 echo "  L3: USE_L3=${USE_L3}, ${L3_SIZE}, assoc ${L3_ASSOC}, rp ${L3_RP}"
 echo "  FDIP: USE_FDIP=${USE_FDIP}"
 echo "  RL actions: rates=${RL_ACTION_ADMISSION_RATES}, ways=${RL_ACTION_PRESERVE_WAYS}, default=${RL_DEFAULT_ACTION}"
-echo "  RL action warmup: effective_epochs=${RL_ACTION_WARMUP_EFFECTIVE_EPOCHS}, max_attempts=${RL_ACTION_WARMUP_MAX_ATTEMPTS}"
+echo "  RL action warmup: rescue_samples=${RL_ACTION_WARMUP_EFFECTIVE_EPOCHS}, max_attempts=${RL_ACTION_WARMUP_MAX_ATTEMPTS}"
 echo "  RL preserve grace: ${RL_PRESERVE_GRACE_EPOCHS} flush epochs"
 echo "  RL candidate filter: sample_rate=${RL_SAMPLE_RATE}, starve_atleast=${RL_STARVE_ATLEAST}, starve_randomness=${RL_STARVE_RANDOMNESS}"
 echo "  RL targets: saturation=${RL_TARGET_SATURATION}, occupancy=${RL_TARGET_OCCUPANCY}"

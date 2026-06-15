@@ -228,7 +228,7 @@ LRUEmissary::LRUEmissary(const Params &p)
     q_action_cooldowns.assign(q_num_actions, 0);
     q_action_quality.assign(q_num_actions, 0.0);
     q_action_warmup_attempts.assign(q_num_actions, 0);
-    q_action_effective_samples.assign(q_num_actions, 0);
+    q_action_rescue_samples.assign(q_num_actions, 0);
     q_pending_useful_credits.assign(q_num_states * q_num_actions, 0);
     q_pending_wasted_penalties.assign(q_num_states * q_num_actions, 0);
     epoch_protection_events_by_action.assign(q_num_actions, 0);
@@ -322,6 +322,7 @@ LRUEmissary::touch(
                     repl_data->admissionState * q_num_actions +
                     creditedAction;
                 q_pending_useful_credits[creditIndex]++;
+                qRecordRescueOutcome(creditedAction);
                 epoch_useful_hits_by_action[creditedAction]++;
                 stats.qUsefulPreserveHits++;
                 epoch_useful_preserve_hits++;
@@ -769,7 +770,7 @@ LRUEmissary::dumpPreserveHist()
             qActionToPreserveWays(activeAction) <= 0;
         const bool actionEffective = epoch_admission_accepts > 0;
         const bool scoreActiveAction = !activeOff && actionEffective;
-        const bool causalFillReward =
+        const bool causalFillFeedback =
             activeAction >= 0 && activeAction < q_num_actions &&
             (epoch_protection_events_by_action[activeAction] > 0 ||
              epoch_useful_hits_by_action[activeAction] > 0);
@@ -797,30 +798,30 @@ LRUEmissary::dumpPreserveHist()
             q_has_inst_fill_off_baseline) {
             instFillDelta = q_inst_fill_off_baseline -
                 epochInstFills;
-            if (causalFillReward) {
+            if (causalFillFeedback) {
                 instFillReductionReward =
                     q_reward_inst_fill_reduction *
                     (std::max(0.0, instFillDelta) / 1000.0);
+                instFillRegressionPenalty =
+                    q_penalty_inst_fill_regression *
+                    (std::max(0.0, -instFillDelta) / 1000.0);
             }
-            instFillRegressionPenalty =
-                q_penalty_inst_fill_regression *
-                (std::max(0.0, -instFillDelta) / 1000.0);
         }
 
         if (!activeOff && actionEffective && q_has_fill_off_baseline) {
             dataFillDelta = q_data_fill_off_baseline - epochDataFills;
             totalFillDelta = q_total_fill_off_baseline - epochTotalFills;
-            if (causalFillReward) {
+            if (causalFillFeedback) {
                 totalFillReductionReward =
                     q_reward_total_fill_reduction *
                     (std::max(0.0, totalFillDelta) / 1000.0);
+                dataFillRegressionPenalty =
+                    q_penalty_data_fill_regression *
+                    (std::max(0.0, -dataFillDelta) / 1000.0);
+                totalFillRegressionPenalty =
+                    q_penalty_total_fill_regression *
+                    (std::max(0.0, -totalFillDelta) / 1000.0);
             }
-            dataFillRegressionPenalty =
-                q_penalty_data_fill_regression *
-                (std::max(0.0, -dataFillDelta) / 1000.0);
-            totalFillRegressionPenalty =
-                q_penalty_total_fill_regression *
-                (std::max(0.0, -totalFillDelta) / 1000.0);
         }
 
         if (activeOff) {
@@ -1113,6 +1114,7 @@ LRUEmissary::qClearLineTracking(
                 repl_data->admissionState * q_num_actions +
                 repl_data->admissionAction;
             q_pending_wasted_penalties[penaltyIndex]++;
+            qRecordRescueOutcome(repl_data->admissionAction);
         }
         stats.qWastedProtections++;
         epoch_wasted_protections++;
@@ -1123,6 +1125,17 @@ LRUEmissary::qClearLineTracking(
     repl_data->preserveGraceEpochs = 0;
     repl_data->admissionState = -1;
     repl_data->admissionAction = -1;
+}
+
+void
+LRUEmissary::qRecordRescueOutcome(int action)
+{
+    if (action <= 0 ||
+        action >= static_cast<int>(q_action_rescue_samples.size())) {
+        return;
+    }
+    q_action_rescue_samples[action]++;
+    stats.qLearningRescueOutcomeSamples++;
 }
 
 void
@@ -1285,7 +1298,7 @@ LRUEmissary::qChooseAction(int state)
             q_learning_action_warmup_max_attempts <= 0) {
             continue;
         }
-        if (q_action_effective_samples[action] <
+        if (q_action_rescue_samples[action] <
                 static_cast<uint64_t>(
                     q_learning_action_warmup_effective_epochs) &&
             q_action_warmup_attempts[action] <
@@ -1328,6 +1341,12 @@ LRUEmissary::qChooseAction(int state)
     }
     if (bestActions.size() > 1) {
         stats.qLearningTieBreaks++;
+        for (const int action : bestActions) {
+            if (qActionToAdmissionRate(action) <= 0.0 ||
+                qActionToPreserveWays(action) <= 0) {
+                return action;
+            }
+        }
     }
     const int bestIndex = q_rng->random<int>(
         0, static_cast<int>(bestActions.size()) - 1);
@@ -1360,13 +1379,6 @@ LRUEmissary::qUpdate(
         qActionToAdmissionRate(activeAction) <= 0.0 ||
         qActionToPreserveWays(activeAction) <= 0;
     const bool noEffectEpoch = !activeOff && !actionEffective;
-    if (!activeOff && actionEffective &&
-        activeAction > 0 &&
-        activeAction < static_cast<int>(
-            q_action_effective_samples.size())) {
-        q_action_effective_samples[activeAction]++;
-        stats.qLearningEffectiveActionEpochs++;
-    }
     const bool totalFillRegressionGuarded =
         q_learning_fill_regression_guard && q_has_fill_off_baseline &&
         !activeOff && actionEffective && totalFillDelta < 0.0;
@@ -1569,7 +1581,7 @@ LRUEmissary::qLogEpoch(
         epoch_protection_events_by_action[activeAction] : 0;
     const uint64_t activeActionUsefulHits = activeActionInRange ?
         epoch_useful_hits_by_action[activeAction] : 0;
-    const bool causalFillReward =
+    const bool causalFillFeedback =
         activeActionProtectionEvents > 0 || activeActionUsefulHits > 0;
     if (!q_log_header_written) {
         qOut << "tick,state,action,admission_rate,effective_preserve_ways,"
@@ -1585,10 +1597,10 @@ LRUEmissary::qLogEpoch(
              << "useful_credit_reward,wasted_credit_penalty,"
              << "delayed_rescue_reward,"
              << "active_action_protection_events,"
-             << "active_action_useful_hits,causal_fill_reward,"
+             << "active_action_useful_hits,causal_fill_feedback,"
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
               << "admission_accepts,admission_rejects,admission_accept_pct,"
-              << "action_effective,action_effective_samples,"
+              << "action_effective,action_rescue_samples,"
               << "action_warmup_attempts,"
               << "no_effect_epoch,q_value_updated,"
               << "set_data_pollution_marks,set_data_pollution_rejects,"
@@ -1639,7 +1651,7 @@ LRUEmissary::qLogEpoch(
          << (epoch_useful_credit_reward - epoch_wasted_credit_penalty)
          << "," << activeActionProtectionEvents
          << "," << activeActionUsefulHits
-         << "," << (causalFillReward ? 1 : 0)
+         << "," << (causalFillFeedback ? 1 : 0)
          << "," << epoch_inst_fills << "," << epoch_data_fills
          << "," << (epoch_inst_fills + epoch_data_fills)
          << "," << epoch_data_fills_preserved_set
@@ -1648,7 +1660,7 @@ LRUEmissary::qLogEpoch(
           << "," << (actionEffective ? 1 : 0)
           << ","
           << (activeActionInRange ?
-              q_action_effective_samples[activeAction] : 0)
+              q_action_rescue_samples[activeAction] : 0)
           << ","
           << (activeActionInRange ?
               q_action_warmup_attempts[activeAction] : 0)
@@ -1743,9 +1755,9 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
     ADD_STAT(qLearningWarmupSelections, statistics::units::Count::get(),
              "Number of forced non-OFF action warm-up selections"),
     ADD_STAT(qLearningTieBreaks, statistics::units::Count::get(),
-             "Number of greedy selections randomized across tied Q-values"),
-    ADD_STAT(qLearningEffectiveActionEpochs, statistics::units::Count::get(),
-             "Number of non-OFF epochs with at least one accepted admission"),
+             "Number of greedy selections with tied Q-values"),
+    ADD_STAT(qLearningRescueOutcomeSamples, statistics::units::Count::get(),
+             "Number of completed rescue outcomes used as warm-up samples"),
     ADD_STAT(qLearningActionSum, statistics::units::Count::get(),
              "Sum of Q-learning admission rates in milli-percent"),
     ADD_STAT(qLearningPreserveWaySum, statistics::units::Count::get(),

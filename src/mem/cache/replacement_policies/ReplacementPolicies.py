@@ -104,7 +104,9 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_gamma = Param.Float(0.8, "Q-learning discount factor")
     q_learning_epsilon = Param.Float(0.10, "Q-learning exploration rate")
     q_learning_action_warmup_effective_epochs = Param.Unsigned(
-        4, "Effective epochs required for each non-OFF action during warm-up"
+        4,
+        "Completed rescue outcomes required for each non-OFF action "
+        "during warm-up",
     )
     q_learning_action_warmup_max_attempts = Param.Unsigned(
         8, "Maximum warm-up selections allowed for each non-OFF action"
