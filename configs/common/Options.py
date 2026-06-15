@@ -230,7 +230,13 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-learning-preserve", action="store_true", default=False)
     parser.add_argument("--q-learning-alpha", type=float, default=0.2)
     parser.add_argument("--q-learning-gamma", type=float, default=0.8)
-    parser.add_argument("--q-learning-epsilon", type=float, default=0.005)
+    parser.add_argument("--q-learning-epsilon", type=float, default=0.10)
+    parser.add_argument(
+        "--q-learning-action-warmup-effective-epochs", type=int, default=4
+    )
+    parser.add_argument(
+        "--q-learning-action-warmup-max-attempts", type=int, default=8
+    )
     parser.add_argument("--q-learning-target-saturation", type=float, default=10.0)
     parser.add_argument("--q-learning-target-occupancy", type=float, default=1.5)
     parser.add_argument("--q-learning-min-preserve-ways", type=int, default=0)
@@ -246,8 +252,8 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-penalty-preserve-victim", type=float, default=10.0)
     parser.add_argument("--q-penalty-quota-exceeded", type=float, default=0.0)
     parser.add_argument("--q-penalty-saturation", type=float, default=0.0)
-    parser.add_argument("--q-reward-preserve-hit", type=float, default=0.05)
-    parser.add_argument("--q-penalty-wasted-rescue", type=float, default=0.2)
+    parser.add_argument("--q-reward-preserve-hit", type=float, default=1.0)
+    parser.add_argument("--q-penalty-wasted-rescue", type=float, default=0.05)
     parser.add_argument("--q-reward-inst-fill-reduction", type=float, default=4.0)
     parser.add_argument("--q-reward-total-fill-reduction", type=float, default=4.0)
     parser.add_argument("--q-penalty-inst-fill-regression", type=float, default=50.0)

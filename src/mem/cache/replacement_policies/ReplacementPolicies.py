@@ -102,7 +102,13 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     )
     q_learning_alpha = Param.Float(0.2, "Q-learning learning rate")
     q_learning_gamma = Param.Float(0.8, "Q-learning discount factor")
-    q_learning_epsilon = Param.Float(0.08, "Q-learning exploration rate")
+    q_learning_epsilon = Param.Float(0.10, "Q-learning exploration rate")
+    q_learning_action_warmup_effective_epochs = Param.Unsigned(
+        4, "Effective epochs required for each non-OFF action during warm-up"
+    )
+    q_learning_action_warmup_max_attempts = Param.Unsigned(
+        8, "Maximum warm-up selections allowed for each non-OFF action"
+    )
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
     )
@@ -113,7 +119,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0, "Minimum preserve ways action available to Q-learning"
     )
     q_learning_default_action = Param.Unsigned(
-        0, "Initial and tie-break Q-learning action index"
+        0, "Initial Q-learning action index"
     )
     q_learning_preserve_grace_epochs = Param.Unsigned(
         32,
@@ -147,11 +153,11 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0.0, "Penalty weight for saturated sets above target"
     )
     q_reward_preserve_hit = Param.Float(
-        0.2,
+        1.0,
         "Delayed reward weight for a demand hit after preserve avoided eviction",
     )
     q_penalty_wasted_rescue = Param.Float(
-        0.2,
+        0.05,
         "Delayed penalty weight when a rescued line is evicted before demand reuse",
     )
     q_reward_inst_fill_reduction = Param.Float(

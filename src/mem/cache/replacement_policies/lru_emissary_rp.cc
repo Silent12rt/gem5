@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <limits>
@@ -66,6 +67,10 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_learning_alpha(p.q_learning_alpha),
       q_learning_gamma(p.q_learning_gamma),
       q_learning_epsilon(p.q_learning_epsilon),
+      q_learning_action_warmup_effective_epochs(
+          p.q_learning_action_warmup_effective_epochs),
+      q_learning_action_warmup_max_attempts(
+          p.q_learning_action_warmup_max_attempts),
       q_learning_target_saturation(p.q_learning_target_saturation),
       q_learning_target_occupancy(p.q_learning_target_occupancy),
       q_learning_min_preserve_ways(p.q_learning_min_preserve_ways),
@@ -164,6 +169,11 @@ LRUEmissary::LRUEmissary(const Params &p)
     }
     q_learning_preserve_grace_epochs =
         std::max(0, q_learning_preserve_grace_epochs);
+    q_learning_action_warmup_effective_epochs =
+        std::max(0, q_learning_action_warmup_effective_epochs);
+    q_learning_action_warmup_max_attempts = std::max(
+        q_learning_action_warmup_effective_epochs,
+        q_learning_action_warmup_max_attempts);
     if (q_learning_reuse_cap <= 0.0) {
         q_learning_reuse_cap = 1.0;
     }
@@ -217,6 +227,8 @@ LRUEmissary::LRUEmissary(const Params &p)
     q_values.assign(q_num_states * q_num_actions, 0.0);
     q_action_cooldowns.assign(q_num_actions, 0);
     q_action_quality.assign(q_num_actions, 0.0);
+    q_action_warmup_attempts.assign(q_num_actions, 0);
+    q_action_effective_samples.assign(q_num_actions, 0);
     q_pending_useful_credits.assign(q_num_states * q_num_actions, 0);
     q_pending_wasted_penalties.assign(q_num_states * q_num_actions, 0);
     epoch_protection_events_by_action.assign(q_num_actions, 0);
@@ -1266,6 +1278,31 @@ LRUEmissary::qChooseAction(int state)
         candidates.push_back(0);
     }
 
+    std::vector<int> warmupCandidates;
+    for (const int action : candidates) {
+        if (action <= 0 ||
+            q_learning_action_warmup_effective_epochs <= 0 ||
+            q_learning_action_warmup_max_attempts <= 0) {
+            continue;
+        }
+        if (q_action_effective_samples[action] <
+                static_cast<uint64_t>(
+                    q_learning_action_warmup_effective_epochs) &&
+            q_action_warmup_attempts[action] <
+                static_cast<uint64_t>(
+                    q_learning_action_warmup_max_attempts)) {
+            warmupCandidates.push_back(action);
+        }
+    }
+    if (!warmupCandidates.empty()) {
+        const int index = q_rng->random<int>(
+            0, static_cast<int>(warmupCandidates.size()) - 1);
+        const int action = warmupCandidates[index];
+        q_action_warmup_attempts[action]++;
+        stats.qLearningWarmupSelections++;
+        return action;
+    }
+
     const double explore =
         static_cast<double>(q_rng->random<uint32_t>(0, 9999)) / 10000.0;
     if (explore < q_learning_epsilon) {
@@ -1276,22 +1313,25 @@ LRUEmissary::qChooseAction(int state)
     }
 
     stats.qLearningExploits++;
-    int bestAction = candidates.front();
-    for (const int action : candidates) {
-        if (action == q_learning_default_action) {
-            bestAction = action;
-            break;
-        }
-    }
-    double bestValue = q_values[state * q_num_actions + bestAction];
+    constexpr double tieEpsilon = 1.0e-12;
+    double bestValue = -std::numeric_limits<double>::infinity();
+    std::vector<int> bestActions;
     for (const int action : candidates) {
         const double value = q_values[state * q_num_actions + action];
-        if (value > bestValue) {
+        if (value > bestValue + tieEpsilon) {
             bestValue = value;
-            bestAction = action;
+            bestActions.clear();
+            bestActions.push_back(action);
+        } else if (std::abs(value - bestValue) <= tieEpsilon) {
+            bestActions.push_back(action);
         }
     }
-    return bestAction;
+    if (bestActions.size() > 1) {
+        stats.qLearningTieBreaks++;
+    }
+    const int bestIndex = q_rng->random<int>(
+        0, static_cast<int>(bestActions.size()) - 1);
+    return bestActions[bestIndex];
 }
 
 void
@@ -1320,6 +1360,13 @@ LRUEmissary::qUpdate(
         qActionToAdmissionRate(activeAction) <= 0.0 ||
         qActionToPreserveWays(activeAction) <= 0;
     const bool noEffectEpoch = !activeOff && !actionEffective;
+    if (!activeOff && actionEffective &&
+        activeAction > 0 &&
+        activeAction < static_cast<int>(
+            q_action_effective_samples.size())) {
+        q_action_effective_samples[activeAction]++;
+        stats.qLearningEffectiveActionEpochs++;
+    }
     const bool totalFillRegressionGuarded =
         q_learning_fill_regression_guard && q_has_fill_off_baseline &&
         !activeOff && actionEffective && totalFillDelta < 0.0;
@@ -1541,7 +1588,9 @@ LRUEmissary::qLogEpoch(
              << "active_action_useful_hits,causal_fill_reward,"
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
               << "admission_accepts,admission_rejects,admission_accept_pct,"
-              << "action_effective,no_effect_epoch,q_value_updated,"
+              << "action_effective,action_effective_samples,"
+              << "action_warmup_attempts,"
+              << "no_effect_epoch,q_value_updated,"
               << "set_data_pollution_marks,set_data_pollution_rejects,"
              << "preserve_reuse_per_admission,preserve_clears,"
              << "quota_exceeded_sets,"
@@ -1597,6 +1646,12 @@ LRUEmissary::qLogEpoch(
           << "," << epoch_admission_accepts << ","
           << epoch_admission_rejects << "," << admissionAcceptPct
           << "," << (actionEffective ? 1 : 0)
+          << ","
+          << (activeActionInRange ?
+              q_action_effective_samples[activeAction] : 0)
+          << ","
+          << (activeActionInRange ?
+              q_action_warmup_attempts[activeAction] : 0)
           << "," << (noEffectEpoch ? 1 : 0)
           << "," << (qValueUpdated ? 1 : 0)
           << "," << epoch_set_data_pollution_marks
@@ -1685,6 +1740,12 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of Q-learning exploratory actions"),
     ADD_STAT(qLearningExploits, statistics::units::Count::get(),
              "Number of Q-learning greedy actions"),
+    ADD_STAT(qLearningWarmupSelections, statistics::units::Count::get(),
+             "Number of forced non-OFF action warm-up selections"),
+    ADD_STAT(qLearningTieBreaks, statistics::units::Count::get(),
+             "Number of greedy selections randomized across tied Q-values"),
+    ADD_STAT(qLearningEffectiveActionEpochs, statistics::units::Count::get(),
+             "Number of non-OFF epochs with at least one accepted admission"),
     ADD_STAT(qLearningActionSum, statistics::units::Count::get(),
              "Sum of Q-learning admission rates in milli-percent"),
     ADD_STAT(qLearningPreserveWaySum, statistics::units::Count::get(),

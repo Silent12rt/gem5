@@ -271,6 +271,20 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_epsilon = (
                     options.q_learning_epsilon
                 )
+                warmup_effective_epochs = max(
+                    0,
+                    int(options.q_learning_action_warmup_effective_epochs),
+                )
+                warmup_max_attempts = max(
+                    0,
+                    int(options.q_learning_action_warmup_max_attempts),
+                )
+                system.l2.replacement_policy.q_learning_action_warmup_effective_epochs = (
+                    warmup_effective_epochs
+                )
+                system.l2.replacement_policy.q_learning_action_warmup_max_attempts = (
+                    warmup_max_attempts
+                )
                 system.l2.replacement_policy.q_learning_target_saturation = (
                     options.q_learning_target_saturation
                 )

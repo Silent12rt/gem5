@@ -96,6 +96,8 @@ class LRUEmissary : public Base
     double q_learning_alpha;
     double q_learning_gamma;
     double q_learning_epsilon;
+    int q_learning_action_warmup_effective_epochs;
+    int q_learning_action_warmup_max_attempts;
     double q_learning_target_saturation;
     double q_learning_target_occupancy;
     int q_learning_min_preserve_ways;
@@ -152,6 +154,8 @@ class LRUEmissary : public Base
     std::vector<QAction> q_actions;
     std::vector<int> q_action_cooldowns;
     std::vector<double> q_action_quality;
+    std::vector<uint64_t> q_action_warmup_attempts;
+    std::vector<uint64_t> q_action_effective_samples;
     std::vector<int> q_set_data_pollution_cooldowns;
     std::vector<uint64_t> q_pending_useful_credits;
     std::vector<uint64_t> q_pending_wasted_penalties;
@@ -197,6 +201,9 @@ class LRUEmissary : public Base
         statistics::Scalar qLearningUpdates;
         statistics::Scalar qLearningExplores;
         statistics::Scalar qLearningExploits;
+        statistics::Scalar qLearningWarmupSelections;
+        statistics::Scalar qLearningTieBreaks;
+        statistics::Scalar qLearningEffectiveActionEpochs;
         statistics::Scalar qLearningActionSum;
         statistics::Scalar qLearningPreserveWaySum;
         statistics::Scalar qAdmissionAccepts;
