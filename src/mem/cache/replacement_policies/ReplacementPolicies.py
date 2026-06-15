@@ -116,7 +116,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0, "Initial and tie-break Q-learning action index"
     )
     q_learning_preserve_grace_epochs = Param.Unsigned(
-        3,
+        32,
         "Flush epochs that a newly admitted line remains eligible for "
         "victim-time rescue",
     )
