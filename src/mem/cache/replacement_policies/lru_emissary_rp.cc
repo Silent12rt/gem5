@@ -79,6 +79,7 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_penalty_quota_exceeded(p.q_penalty_quota_exceeded),
       q_penalty_saturation(p.q_penalty_saturation),
       q_reward_preserve_hit(p.q_reward_preserve_hit),
+      q_penalty_wasted_rescue(p.q_penalty_wasted_rescue),
       q_reward_inst_fill_reduction(p.q_reward_inst_fill_reduction),
       q_reward_total_fill_reduction(p.q_reward_total_fill_reduction),
       q_penalty_inst_fill_regression(p.q_penalty_inst_fill_regression),
@@ -137,6 +138,7 @@ LRUEmissary::LRUEmissary(const Params &p)
       epoch_rescue_capacity_rejects(0),
       epoch_one_shot_evictions(0),
       epoch_useful_credit_reward(0.0),
+      epoch_wasted_credit_penalty(0.0),
       epoch_admission_accepts(0),
       epoch_admission_rejects(0),
       epoch_preserve_victims(0),
@@ -187,6 +189,7 @@ LRUEmissary::LRUEmissary(const Params &p)
         std::max(0.0, q_learning_action_quality_sample_cap);
     q_learning_quality_preserved_data_weight =
         std::max(0.0, q_learning_quality_preserved_data_weight);
+    q_penalty_wasted_rescue = std::max(0.0, q_penalty_wasted_rescue);
 
     const std::size_t actionCount = std::min(
         p.q_action_admission_rates.size(), p.q_action_preserve_ways.size());
@@ -215,6 +218,7 @@ LRUEmissary::LRUEmissary(const Params &p)
     q_action_cooldowns.assign(q_num_actions, 0);
     q_action_quality.assign(q_num_actions, 0.0);
     q_pending_useful_credits.assign(q_num_states * q_num_actions, 0);
+    q_pending_wasted_penalties.assign(q_num_states * q_num_actions, 0);
     epoch_protection_events_by_action.assign(q_num_actions, 0);
     epoch_useful_hits_by_action.assign(q_num_actions, 0);
     if (q_learning_preserve) {
@@ -746,7 +750,7 @@ LRUEmissary::dumpPreserveHist()
         static_cast<double>(epoch_admission_accepts) / 1000.0;
 
     if (q_learning_preserve && numSets > 0) {
-        qApplyUsefulHitCredits();
+        qApplyDelayedRescueCredits();
         const int activeAction = epochAction;
         const bool activeOff =
             qActionToAdmissionRate(activeAction) <= 0.0 ||
@@ -837,8 +841,9 @@ LRUEmissary::dumpPreserveHist()
             stats.qInstFillBaselineUpdates++;
         }
 
-        // Useful preserve hits are delayed credits applied directly to the
-        // state-action pair that admitted the protected line.
+        // Rescue outcomes are delayed feedback applied directly to the
+        // state-action pair that admitted the line: reuse earns a reward,
+        // while eviction before reuse incurs a wasted-rescue penalty.
         const double reuseReward = 0.0;
         const double nonPreserveVictimReward = !scoreActiveAction ? 0.0 :
             q_reward_non_preserve_victim *
@@ -1088,6 +1093,15 @@ LRUEmissary::qClearLineTracking(
     bool countWastedProtection)
 {
     if (countWastedProtection && repl_data->protectedFromEviction) {
+        if (repl_data->admissionState >= 0 &&
+            repl_data->admissionState < q_num_states &&
+            repl_data->admissionAction > 0 &&
+            repl_data->admissionAction < q_num_actions) {
+            const int penaltyIndex =
+                repl_data->admissionState * q_num_actions +
+                repl_data->admissionAction;
+            q_pending_wasted_penalties[penaltyIndex]++;
+        }
         stats.qWastedProtections++;
         epoch_wasted_protections++;
     }
@@ -1114,29 +1128,44 @@ LRUEmissary::qRecordAdmission(
 }
 
 double
-LRUEmissary::qApplyUsefulHitCredits()
+LRUEmissary::qApplyDelayedRescueCredits()
 {
     epoch_useful_credit_reward = 0.0;
+    epoch_wasted_credit_penalty = 0.0;
     for (std::size_t index = 0;
          index < q_pending_useful_credits.size(); index++) {
         const uint64_t hits = q_pending_useful_credits[index];
-        if (hits == 0) {
+        const uint64_t wasted = q_pending_wasted_penalties[index];
+        if (hits == 0 && wasted == 0) {
             continue;
         }
 
         const double creditedHits = std::min(
             static_cast<double>(hits), q_learning_reuse_cap);
+        const double penalizedWasted = std::min(
+            static_cast<double>(wasted), q_learning_reuse_cap);
         const double creditReward =
             q_reward_preserve_hit * creditedHits;
+        const double wastedPenalty =
+            q_penalty_wasted_rescue * penalizedWasted;
+        const double delayedReward = creditReward - wastedPenalty;
         double& oldValue = q_values[index];
-        oldValue += q_learning_alpha * (creditReward - oldValue);
+        oldValue += q_learning_alpha * (delayedReward - oldValue);
 
         epoch_useful_credit_reward += creditReward;
-        stats.qUsefulCreditUpdates++;
-        stats.qUsefulCreditReward += creditReward;
+        epoch_wasted_credit_penalty += wastedPenalty;
+        if (hits > 0) {
+            stats.qUsefulCreditUpdates++;
+            stats.qUsefulCreditReward += creditReward;
+        }
+        if (wasted > 0) {
+            stats.qWastedCreditUpdates++;
+            stats.qWastedCreditPenalty += wastedPenalty;
+        }
         q_pending_useful_credits[index] = 0;
+        q_pending_wasted_penalties[index] = 0;
     }
-    return epoch_useful_credit_reward;
+    return epoch_useful_credit_reward - epoch_wasted_credit_penalty;
 }
 
 int
@@ -1506,7 +1535,8 @@ LRUEmissary::qLogEpoch(
              << "grace_retentions,grace_expirations,"
              << "eligible_demand_hits,rescue_capacity_rejects,"
              << "one_shot_evictions,"
-             << "useful_credit_reward,"
+             << "useful_credit_reward,wasted_credit_penalty,"
+             << "delayed_rescue_reward,"
              << "active_action_protection_events,"
              << "active_action_useful_hits,causal_fill_reward,"
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
@@ -1555,6 +1585,9 @@ LRUEmissary::qLogEpoch(
          << "," << epoch_rescue_capacity_rejects
          << "," << epoch_one_shot_evictions
          << "," << epoch_useful_credit_reward
+         << "," << epoch_wasted_credit_penalty
+         << ","
+         << (epoch_useful_credit_reward - epoch_wasted_credit_penalty)
          << "," << activeActionProtectionEvents
          << "," << activeActionUsefulHits
          << "," << (causalFillReward ? 1 : 0)
@@ -1610,6 +1643,7 @@ LRUEmissary::resetEpochCounters()
     epoch_rescue_capacity_rejects = 0;
     epoch_one_shot_evictions = 0;
     epoch_useful_credit_reward = 0.0;
+    epoch_wasted_credit_penalty = 0.0;
     std::fill(
         epoch_protection_events_by_action.begin(),
         epoch_protection_events_by_action.end(), 0);
@@ -1719,6 +1753,10 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of delayed useful-hit state-action credit updates"),
     ADD_STAT(qUsefulCreditReward, statistics::units::Count::get(),
              "Total delayed reward attributed to useful preserve hits"),
+    ADD_STAT(qWastedCreditUpdates, statistics::units::Count::get(),
+             "Number of original state-action pairs charged for wasted rescues"),
+    ADD_STAT(qWastedCreditPenalty, statistics::units::Count::get(),
+             "Total delayed penalty attributed to wasted rescues"),
     ADD_STAT(qAuxiliaryTouchSuppressions, statistics::units::Count::get(),
              "Number of auxiliary EMISSARY hits prevented from refreshing LRU recency")
 {

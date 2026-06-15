@@ -247,6 +247,7 @@ def addNoISAOptions(parser):
     parser.add_argument("--q-penalty-quota-exceeded", type=float, default=0.0)
     parser.add_argument("--q-penalty-saturation", type=float, default=0.0)
     parser.add_argument("--q-reward-preserve-hit", type=float, default=0.05)
+    parser.add_argument("--q-penalty-wasted-rescue", type=float, default=0.2)
     parser.add_argument("--q-reward-inst-fill-reduction", type=float, default=4.0)
     parser.add_argument("--q-reward-total-fill-reduction", type=float, default=4.0)
     parser.add_argument("--q-penalty-inst-fill-regression", type=float, default=50.0)

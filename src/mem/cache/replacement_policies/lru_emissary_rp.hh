@@ -108,6 +108,7 @@ class LRUEmissary : public Base
     double q_penalty_quota_exceeded;
     double q_penalty_saturation;
     double q_reward_preserve_hit;
+    double q_penalty_wasted_rescue;
     double q_reward_inst_fill_reduction;
     double q_reward_total_fill_reduction;
     double q_penalty_inst_fill_regression;
@@ -153,6 +154,7 @@ class LRUEmissary : public Base
     std::vector<double> q_action_quality;
     std::vector<int> q_set_data_pollution_cooldowns;
     std::vector<uint64_t> q_pending_useful_credits;
+    std::vector<uint64_t> q_pending_wasted_penalties;
     mutable std::vector<uint64_t> epoch_protection_events_by_action;
     mutable std::vector<uint64_t> epoch_useful_hits_by_action;
     Random::RandomPtr q_rng;
@@ -167,6 +169,7 @@ class LRUEmissary : public Base
     mutable uint64_t epoch_rescue_capacity_rejects;
     mutable uint64_t epoch_one_shot_evictions;
     mutable double epoch_useful_credit_reward;
+    mutable double epoch_wasted_credit_penalty;
     mutable uint64_t epoch_admission_accepts;
     mutable uint64_t epoch_admission_rejects;
     mutable uint64_t epoch_preserve_victims;
@@ -228,6 +231,8 @@ class LRUEmissary : public Base
         statistics::Scalar qOneShotEvictions;
         statistics::Scalar qUsefulCreditUpdates;
         statistics::Scalar qUsefulCreditReward;
+        statistics::Scalar qWastedCreditUpdates;
+        statistics::Scalar qWastedCreditPenalty;
         statistics::Scalar qAuxiliaryTouchSuppressions;
     } stats;
 
@@ -284,7 +289,7 @@ class LRUEmissary : public Base
         bool countWastedProtection);
     void qRecordAdmission(
         const std::shared_ptr<LRUEmissaryReplData>& repl_data) const;
-    double qApplyUsefulHitCredits();
+    double qApplyDelayedRescueCredits();
     int qChooseAction(int state);
     void qUpdate(
         int nextState, double reward, double saturatedPct,

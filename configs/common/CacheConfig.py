@@ -331,6 +331,9 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_reward_preserve_hit = (
                     options.q_reward_preserve_hit
                 )
+                system.l2.replacement_policy.q_penalty_wasted_rescue = (
+                    options.q_penalty_wasted_rescue
+                )
                 system.l2.replacement_policy.q_reward_inst_fill_reduction = (
                     options.q_reward_inst_fill_reduction
                 )

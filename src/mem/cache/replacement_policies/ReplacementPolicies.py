@@ -150,6 +150,10 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         0.2,
         "Delayed reward weight for a demand hit after preserve avoided eviction",
     )
+    q_penalty_wasted_rescue = Param.Float(
+        0.2,
+        "Delayed penalty weight when a rescued line is evicted before demand reuse",
+    )
     q_reward_inst_fill_reduction = Param.Float(
         8.0, "Reward weight when instruction-side fills fall below OFF baseline"
     )
