@@ -92,6 +92,10 @@ RL_ACTION_QUALITY_SAMPLE_CAP=${RL_ACTION_QUALITY_SAMPLE_CAP:-8.0}
 RL_QUALITY_DATA_WEIGHT=${RL_QUALITY_DATA_WEIGHT:-2.0}
 RL_QUALITY_TOTAL_WEIGHT=${RL_QUALITY_TOTAL_WEIGHT:-1.0}
 RL_QUALITY_PRESERVED_DATA_WEIGHT=${RL_QUALITY_PRESERVED_DATA_WEIGHT:-64.0}
+RL_RESCUE_QUALITY_GATE=${RL_RESCUE_QUALITY_GATE:-1}
+RL_RESCUE_QUALITY_MIN_SAMPLES=${RL_RESCUE_QUALITY_MIN_SAMPLES:-16}
+RL_MIN_RESCUE_USEFUL_PCT=${RL_MIN_RESCUE_USEFUL_PCT:-5.0}
+RL_RESCUE_QUALITY_COOLDOWN=${RL_RESCUE_QUALITY_COOLDOWN:-64}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -221,6 +225,10 @@ run_rl_suite() {
     if [[ "${RL_ACTION_QUALITY_GATE}" != "1" ]]; then
         quality_gate_args+=(--q-learning-disable-action-quality-gate)
     fi
+    local rescue_quality_gate_args=()
+    if [[ "${RL_RESCUE_QUALITY_GATE}" != "1" ]]; then
+        rescue_quality_gate_args+=(--q-learning-disable-rescue-quality-gate)
+    fi
 
     local seed
     for seed in ${RL_SEEDS}; do
@@ -269,11 +277,15 @@ run_rl_suite() {
             --q-learning-quality-data-weight="${RL_QUALITY_DATA_WEIGHT}" \
             --q-learning-quality-total-weight="${RL_QUALITY_TOTAL_WEIGHT}" \
             --q-learning-quality-preserved-data-weight="${RL_QUALITY_PRESERVED_DATA_WEIGHT}" \
+            --q-learning-rescue-quality-min-samples="${RL_RESCUE_QUALITY_MIN_SAMPLES}" \
+            --q-learning-min-rescue-useful-pct="${RL_MIN_RESCUE_USEFUL_PCT}" \
+            --q-learning-rescue-quality-cooldown="${RL_RESCUE_QUALITY_COOLDOWN}" \
             "${fill_guard_args[@]}" \
             "${data_guard_args[@]}" \
             "${data_pollution_guard_args[@]}" \
             "${set_data_pollution_filter_args[@]}" \
             "${quality_gate_args[@]}" \
+            "${rescue_quality_gate_args[@]}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \
             --emissary-require-iq-empty \

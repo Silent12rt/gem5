@@ -306,6 +306,18 @@ def addNoISAOptions(parser):
     parser.add_argument(
         "--q-learning-quality-preserved-data-weight", type=float, default=64.0
     )
+    parser.add_argument(
+        "--q-learning-disable-rescue-quality-gate",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--q-learning-rescue-quality-min-samples", type=int, default=16
+    )
+    parser.add_argument("--q-learning-min-rescue-useful-pct", type=float, default=5.0)
+    parser.add_argument(
+        "--q-learning-rescue-quality-cooldown", type=int, default=64
+    )
     parser.add_argument("--q-learning-disable-set-guard", action="store_true", default=False)
     parser.add_argument("--q-learning-seed", type=int, default=0)
 

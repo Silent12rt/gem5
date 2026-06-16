@@ -426,6 +426,21 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_quality_preserved_data_weight = (
                     options.q_learning_quality_preserved_data_weight
                 )
+                system.l2.replacement_policy.q_learning_rescue_quality_gate = (
+                    not options.q_learning_disable_rescue_quality_gate
+                )
+                system.l2.replacement_policy.q_learning_rescue_quality_min_samples = (
+                    max(0, int(options.q_learning_rescue_quality_min_samples))
+                )
+                system.l2.replacement_policy.q_learning_min_rescue_useful_pct = (
+                    max(
+                        0.0,
+                        min(100.0, options.q_learning_min_rescue_useful_pct),
+                    )
+                )
+                system.l2.replacement_policy.q_learning_rescue_quality_cooldown = (
+                    max(0, int(options.q_learning_rescue_quality_cooldown))
+                )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard
                 )

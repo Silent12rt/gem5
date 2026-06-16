@@ -244,6 +244,23 @@ class LRUEmissaryRP(BaseReplacementPolicy):
     q_learning_quality_preserved_data_weight = Param.Float(
         64.0, "Action quality penalty weight for data fills in preserved sets"
     )
+    q_learning_rescue_quality_gate = Param.Bool(
+        True,
+        "Temporarily suppress actions whose completed rescue outcomes have "
+        "too few useful hits",
+    )
+    q_learning_rescue_quality_min_samples = Param.Int(
+        16,
+        "Completed rescue outcomes required before applying rescue quality gate",
+    )
+    q_learning_min_rescue_useful_pct = Param.Float(
+        5.0,
+        "Minimum useful-hit percentage among completed rescue outcomes",
+    )
+    q_learning_rescue_quality_cooldown = Param.Int(
+        64,
+        "Epochs to suppress an action after poor rescue useful rate",
+    )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"
     )

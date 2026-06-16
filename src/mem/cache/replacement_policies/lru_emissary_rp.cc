@@ -116,6 +116,12 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_learning_quality_total_weight(p.q_learning_quality_total_weight),
       q_learning_quality_preserved_data_weight(
           p.q_learning_quality_preserved_data_weight),
+      q_learning_rescue_quality_gate(p.q_learning_rescue_quality_gate),
+      q_learning_rescue_quality_min_samples(
+          p.q_learning_rescue_quality_min_samples),
+      q_learning_min_rescue_useful_pct(p.q_learning_min_rescue_useful_pct),
+      q_learning_rescue_quality_cooldown(
+          p.q_learning_rescue_quality_cooldown),
       q_learning_set_guard(p.q_learning_set_guard),
       q_learning_seed(p.q_learning_seed),
       q_num_actions(0),
@@ -199,6 +205,12 @@ LRUEmissary::LRUEmissary(const Params &p)
         std::max(0.0, q_learning_action_quality_sample_cap);
     q_learning_quality_preserved_data_weight =
         std::max(0.0, q_learning_quality_preserved_data_weight);
+    q_learning_rescue_quality_min_samples =
+        std::max(0, q_learning_rescue_quality_min_samples);
+    q_learning_min_rescue_useful_pct = std::max(
+        0.0, std::min(100.0, q_learning_min_rescue_useful_pct));
+    q_learning_rescue_quality_cooldown =
+        std::max(0, q_learning_rescue_quality_cooldown);
     q_penalty_wasted_rescue = std::max(0.0, q_penalty_wasted_rescue);
 
     const std::size_t actionCount = std::min(
@@ -229,6 +241,9 @@ LRUEmissary::LRUEmissary(const Params &p)
     q_action_quality.assign(q_num_actions, 0.0);
     q_action_warmup_attempts.assign(q_num_actions, 0);
     q_action_rescue_samples.assign(q_num_actions, 0);
+    q_action_rescue_successes.assign(q_num_actions, 0);
+    q_action_rescue_wastes.assign(q_num_actions, 0);
+    q_rescue_quality_cooldowns.assign(q_num_actions, 0);
     q_pending_useful_credits.assign(q_num_states * q_num_actions, 0);
     q_pending_wasted_penalties.assign(q_num_states * q_num_actions, 0);
     epoch_protection_events_by_action.assign(q_num_actions, 0);
@@ -322,7 +337,7 @@ LRUEmissary::touch(
                     repl_data->admissionState * q_num_actions +
                     creditedAction;
                 q_pending_useful_credits[creditIndex]++;
-                qRecordRescueOutcome(creditedAction);
+                qRecordRescueOutcome(creditedAction, true);
                 epoch_useful_hits_by_action[creditedAction]++;
                 stats.qUsefulPreserveHits++;
                 epoch_useful_preserve_hits++;
@@ -1114,7 +1129,7 @@ LRUEmissary::qClearLineTracking(
                 repl_data->admissionState * q_num_actions +
                 repl_data->admissionAction;
             q_pending_wasted_penalties[penaltyIndex]++;
-            qRecordRescueOutcome(repl_data->admissionAction);
+            qRecordRescueOutcome(repl_data->admissionAction, false);
         }
         stats.qWastedProtections++;
         epoch_wasted_protections++;
@@ -1128,14 +1143,31 @@ LRUEmissary::qClearLineTracking(
 }
 
 void
-LRUEmissary::qRecordRescueOutcome(int action)
+LRUEmissary::qRecordRescueOutcome(int action, bool useful)
 {
     if (action <= 0 ||
         action >= static_cast<int>(q_action_rescue_samples.size())) {
         return;
     }
     q_action_rescue_samples[action]++;
+    if (useful) {
+        q_action_rescue_successes[action]++;
+    } else {
+        q_action_rescue_wastes[action]++;
+    }
     stats.qLearningRescueOutcomeSamples++;
+
+    if (q_learning_rescue_quality_gate &&
+        q_learning_rescue_quality_cooldown > 0 &&
+        qActionRescueQualityPoor(action)) {
+        const bool wasBlocked = qActionRescueQualityBlocked(action);
+        q_rescue_quality_cooldowns[action] = std::max(
+            q_rescue_quality_cooldowns[action],
+            q_learning_rescue_quality_cooldown);
+        if (!wasBlocked) {
+            stats.qRescueQualityBlocks++;
+        }
+    }
 }
 
 void
@@ -1233,6 +1265,51 @@ LRUEmissary::qActionQualityBlocked(int action) const
         q_action_quality[action] < q_learning_min_action_quality;
 }
 
+double
+LRUEmissary::qActionRescueUsefulPct(int action) const
+{
+    if (action <= 0 ||
+        action >= static_cast<int>(q_action_rescue_samples.size())) {
+        return 0.0;
+    }
+    const uint64_t samples = q_action_rescue_samples[action];
+    if (samples == 0) {
+        return 0.0;
+    }
+    return 100.0 *
+        (static_cast<double>(q_action_rescue_successes[action]) /
+         static_cast<double>(samples));
+}
+
+bool
+LRUEmissary::qActionRescueQualityPoor(int action) const
+{
+    if (!q_learning_rescue_quality_gate ||
+        q_learning_rescue_quality_min_samples <= 0 ||
+        q_learning_min_rescue_useful_pct <= 0.0 ||
+        action <= 0 ||
+        action >= static_cast<int>(q_action_rescue_samples.size())) {
+        return false;
+    }
+
+    const uint64_t samples = q_action_rescue_samples[action];
+    if (samples <
+        static_cast<uint64_t>(q_learning_rescue_quality_min_samples)) {
+        return false;
+    }
+
+    return qActionRescueUsefulPct(action) < q_learning_min_rescue_useful_pct;
+}
+
+bool
+LRUEmissary::qActionRescueQualityBlocked(int action) const
+{
+    return q_learning_rescue_quality_gate &&
+        action > 0 &&
+        action < static_cast<int>(q_rescue_quality_cooldowns.size()) &&
+        q_rescue_quality_cooldowns[action] > 0;
+}
+
 void
 LRUEmissary::qTickActionCooldowns()
 {
@@ -1240,6 +1317,12 @@ LRUEmissary::qTickActionCooldowns()
          action++) {
         if (q_action_cooldowns[action] > 0) {
             q_action_cooldowns[action]--;
+        }
+    }
+    for (std::size_t action = 1; action < q_rescue_quality_cooldowns.size();
+         action++) {
+        if (q_rescue_quality_cooldowns[action] > 0) {
+            q_rescue_quality_cooldowns[action]--;
         }
     }
     for (auto& cooldown : q_set_data_pollution_cooldowns) {
@@ -1283,6 +1366,10 @@ LRUEmissary::qChooseAction(int state)
         }
         if (qActionQualityBlocked(action)) {
             stats.qQualityActionSkips++;
+            continue;
+        }
+        if (qActionRescueQualityBlocked(action)) {
+            stats.qRescueQualitySkips++;
             continue;
         }
         candidates.push_back(action);
@@ -1456,6 +1543,9 @@ LRUEmissary::qUpdate(
         }
     }
 
+    const bool rescueQualityBlocked =
+        qActionRescueQualityBlocked(activeAction);
+
     bool qValueUpdated = false;
     if (q_has_last && !noEffectEpoch) {
         double nextBest = -std::numeric_limits<double>::infinity();
@@ -1464,6 +1554,9 @@ LRUEmissary::qUpdate(
                 continue;
             }
             if (qActionQualityBlocked(action)) {
+                continue;
+            }
+            if (qActionRescueQualityBlocked(action)) {
                 continue;
             }
             nextBest = std::max(
@@ -1494,7 +1587,11 @@ LRUEmissary::qUpdate(
     if (actionQualityBlocked) {
         stats.qQualityActionForces++;
     }
-    if (noEffectEpoch || guardForced || actionQualityBlocked) {
+    if (rescueQualityBlocked) {
+        stats.qRescueQualityForces++;
+    }
+    if (noEffectEpoch || guardForced || actionQualityBlocked ||
+        rescueQualityBlocked) {
         nextAction = 0;
     } else {
         nextAction = qChooseAction(nextState);
@@ -1581,6 +1678,18 @@ LRUEmissary::qLogEpoch(
         epoch_protection_events_by_action[activeAction] : 0;
     const uint64_t activeActionUsefulHits = activeActionInRange ?
         epoch_useful_hits_by_action[activeAction] : 0;
+    const uint64_t activeActionRescueSamples = activeActionInRange ?
+        q_action_rescue_samples[activeAction] : 0;
+    const uint64_t activeActionRescueUseful = activeActionInRange ?
+        q_action_rescue_successes[activeAction] : 0;
+    const uint64_t activeActionRescueWasted = activeActionInRange ?
+        q_action_rescue_wastes[activeAction] : 0;
+    const double activeActionRescueUsefulPct = activeActionInRange ?
+        qActionRescueUsefulPct(activeAction) : 0.0;
+    const bool activeActionRescueQualityBlocked = activeActionInRange ?
+        qActionRescueQualityBlocked(activeAction) : false;
+    const int activeActionRescueQualityCooldown = activeActionInRange ?
+        q_rescue_quality_cooldowns[activeAction] : 0;
     const bool causalFillFeedback =
         activeActionProtectionEvents > 0 || activeActionUsefulHits > 0;
     if (!q_log_header_written) {
@@ -1601,7 +1710,10 @@ LRUEmissary::qLogEpoch(
              << "inst_fills,data_fills,total_fills,data_fills_preserved_set,"
               << "admission_accepts,admission_rejects,admission_accept_pct,"
               << "action_effective,action_rescue_samples,"
-              << "action_warmup_attempts,"
+              << "action_rescue_useful_samples,"
+              << "action_rescue_wasted_samples,action_rescue_useful_pct,"
+              << "action_rescue_quality_blocked,"
+              << "action_rescue_quality_cooldown,action_warmup_attempts,"
               << "no_effect_epoch,q_value_updated,"
               << "set_data_pollution_marks,set_data_pollution_rejects,"
              << "preserve_reuse_per_admission,preserve_clears,"
@@ -1658,9 +1770,12 @@ LRUEmissary::qLogEpoch(
           << "," << epoch_admission_accepts << ","
           << epoch_admission_rejects << "," << admissionAcceptPct
           << "," << (actionEffective ? 1 : 0)
-          << ","
-          << (activeActionInRange ?
-              q_action_rescue_samples[activeAction] : 0)
+          << "," << activeActionRescueSamples
+          << "," << activeActionRescueUseful
+          << "," << activeActionRescueWasted
+          << "," << activeActionRescueUsefulPct
+          << "," << (activeActionRescueQualityBlocked ? 1 : 0)
+          << "," << activeActionRescueQualityCooldown
           << ","
           << (activeActionInRange ?
               q_action_warmup_attempts[activeAction] : 0)
@@ -1758,6 +1873,12 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of greedy selections with tied Q-values"),
     ADD_STAT(qLearningRescueOutcomeSamples, statistics::units::Count::get(),
              "Number of completed rescue outcomes used as warm-up samples"),
+    ADD_STAT(qRescueQualityBlocks, statistics::units::Count::get(),
+             "Number of actions cooled down by poor rescue useful rate"),
+    ADD_STAT(qRescueQualityForces, statistics::units::Count::get(),
+             "Number of Q-learning actions forced to OFF by rescue quality"),
+    ADD_STAT(qRescueQualitySkips, statistics::units::Count::get(),
+             "Number of rescue-quality-blocked actions skipped during selection"),
     ADD_STAT(qLearningActionSum, statistics::units::Count::get(),
              "Sum of Q-learning admission rates in milli-percent"),
     ADD_STAT(qLearningPreserveWaySum, statistics::units::Count::get(),

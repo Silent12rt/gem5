@@ -137,6 +137,10 @@ class LRUEmissary : public Base
     double q_learning_quality_data_weight;
     double q_learning_quality_total_weight;
     double q_learning_quality_preserved_data_weight;
+    bool q_learning_rescue_quality_gate;
+    int q_learning_rescue_quality_min_samples;
+    double q_learning_min_rescue_useful_pct;
+    int q_learning_rescue_quality_cooldown;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -156,6 +160,9 @@ class LRUEmissary : public Base
     std::vector<double> q_action_quality;
     std::vector<uint64_t> q_action_warmup_attempts;
     std::vector<uint64_t> q_action_rescue_samples;
+    std::vector<uint64_t> q_action_rescue_successes;
+    std::vector<uint64_t> q_action_rescue_wastes;
+    std::vector<int> q_rescue_quality_cooldowns;
     std::vector<int> q_set_data_pollution_cooldowns;
     std::vector<uint64_t> q_pending_useful_credits;
     std::vector<uint64_t> q_pending_wasted_penalties;
@@ -204,6 +211,9 @@ class LRUEmissary : public Base
         statistics::Scalar qLearningWarmupSelections;
         statistics::Scalar qLearningTieBreaks;
         statistics::Scalar qLearningRescueOutcomeSamples;
+        statistics::Scalar qRescueQualityBlocks;
+        statistics::Scalar qRescueQualityForces;
+        statistics::Scalar qRescueQualitySkips;
         statistics::Scalar qLearningActionSum;
         statistics::Scalar qLearningPreserveWaySum;
         statistics::Scalar qAdmissionAccepts;
@@ -289,12 +299,15 @@ class LRUEmissary : public Base
         double admissionAcceptPct) const;
     bool qActionCoolingDown(int action) const;
     bool qActionQualityBlocked(int action) const;
+    bool qActionRescueQualityBlocked(int action) const;
+    bool qActionRescueQualityPoor(int action) const;
+    double qActionRescueUsefulPct(int action) const;
     void qTickActionCooldowns();
     bool qRecoverActionQuality();
     void qClearLineTracking(
         const std::shared_ptr<LRUEmissaryReplData>& repl_data,
         bool countWastedProtection);
-    void qRecordRescueOutcome(int action);
+    void qRecordRescueOutcome(int action, bool useful);
     void qRecordAdmission(
         const std::shared_ptr<LRUEmissaryReplData>& repl_data) const;
     double qApplyDelayedRescueCredits();
