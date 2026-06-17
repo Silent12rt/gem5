@@ -109,7 +109,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "during warm-up",
     )
     q_learning_action_warmup_max_attempts = Param.Unsigned(
-        8, "Maximum warm-up selections allowed for each non-OFF action"
+        6, "Maximum warm-up selections allowed for each non-OFF action"
     )
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
@@ -250,7 +250,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "too few useful hits",
     )
     q_learning_rescue_quality_min_samples = Param.Int(
-        16,
+        12,
         "Completed rescue outcomes required before applying rescue quality gate",
     )
     q_learning_min_rescue_useful_pct = Param.Float(
@@ -258,7 +258,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "Minimum useful-hit percentage among completed rescue outcomes",
     )
     q_learning_rescue_quality_cooldown = Param.Int(
-        64,
+        128,
         "Epochs to suppress an action after poor rescue useful rate",
     )
     q_learning_set_guard = Param.Bool(

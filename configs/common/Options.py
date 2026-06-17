@@ -235,7 +235,7 @@ def addNoISAOptions(parser):
         "--q-learning-action-warmup-effective-epochs", type=int, default=4
     )
     parser.add_argument(
-        "--q-learning-action-warmup-max-attempts", type=int, default=8
+        "--q-learning-action-warmup-max-attempts", type=int, default=6
     )
     parser.add_argument("--q-learning-target-saturation", type=float, default=10.0)
     parser.add_argument("--q-learning-target-occupancy", type=float, default=1.5)
@@ -312,11 +312,11 @@ def addNoISAOptions(parser):
         default=False,
     )
     parser.add_argument(
-        "--q-learning-rescue-quality-min-samples", type=int, default=16
+        "--q-learning-rescue-quality-min-samples", type=int, default=12
     )
     parser.add_argument("--q-learning-min-rescue-useful-pct", type=float, default=5.0)
     parser.add_argument(
-        "--q-learning-rescue-quality-cooldown", type=int, default=64
+        "--q-learning-rescue-quality-cooldown", type=int, default=128
     )
     parser.add_argument("--q-learning-disable-set-guard", action="store_true", default=False)
     parser.add_argument("--q-learning-seed", type=int, default=0)
