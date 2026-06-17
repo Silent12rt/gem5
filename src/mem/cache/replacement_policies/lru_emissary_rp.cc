@@ -122,6 +122,14 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_learning_min_rescue_useful_pct(p.q_learning_min_rescue_useful_pct),
       q_learning_rescue_quality_cooldown(
           p.q_learning_rescue_quality_cooldown),
+      q_learning_global_rescue_quality_gate(
+          p.q_learning_global_rescue_quality_gate),
+      q_learning_global_rescue_quality_min_samples(
+          p.q_learning_global_rescue_quality_min_samples),
+      q_learning_global_min_rescue_useful_pct(
+          p.q_learning_global_min_rescue_useful_pct),
+      q_learning_global_rescue_quality_cooldown(
+          p.q_learning_global_rescue_quality_cooldown),
       q_learning_set_guard(p.q_learning_set_guard),
       q_learning_seed(p.q_learning_seed),
       q_num_actions(0),
@@ -135,6 +143,10 @@ LRUEmissary::LRUEmissary(const Params &p)
       q_inst_fill_off_baseline(0.0),
       q_data_fill_off_baseline(0.0),
       q_total_fill_off_baseline(0.0),
+      q_global_rescue_samples(0),
+      q_global_rescue_successes(0),
+      q_global_rescue_wastes(0),
+      q_global_rescue_quality_cooldown(0),
       q_rng(q_learning_seed ?
             Random::genRandom(static_cast<uint32_t>(q_learning_seed)) :
             Random::genRandom()),
@@ -211,6 +223,12 @@ LRUEmissary::LRUEmissary(const Params &p)
         0.0, std::min(100.0, q_learning_min_rescue_useful_pct));
     q_learning_rescue_quality_cooldown =
         std::max(0, q_learning_rescue_quality_cooldown);
+    q_learning_global_rescue_quality_min_samples =
+        std::max(0, q_learning_global_rescue_quality_min_samples);
+    q_learning_global_min_rescue_useful_pct = std::max(
+        0.0, std::min(100.0, q_learning_global_min_rescue_useful_pct));
+    q_learning_global_rescue_quality_cooldown =
+        std::max(0, q_learning_global_rescue_quality_cooldown);
     q_penalty_wasted_rescue = std::max(0.0, q_penalty_wasted_rescue);
 
     const std::size_t actionCount = std::min(
@@ -1150,10 +1168,13 @@ LRUEmissary::qRecordRescueOutcome(int action, bool useful)
         return;
     }
     q_action_rescue_samples[action]++;
+    q_global_rescue_samples++;
     if (useful) {
         q_action_rescue_successes[action]++;
+        q_global_rescue_successes++;
     } else {
         q_action_rescue_wastes[action]++;
+        q_global_rescue_wastes++;
     }
     stats.qLearningRescueOutcomeSamples++;
 
@@ -1166,6 +1187,18 @@ LRUEmissary::qRecordRescueOutcome(int action, bool useful)
             q_learning_rescue_quality_cooldown);
         if (!wasBlocked) {
             stats.qRescueQualityBlocks++;
+        }
+    }
+
+    if (q_learning_global_rescue_quality_gate &&
+        q_learning_global_rescue_quality_cooldown > 0 &&
+        qGlobalRescueQualityPoor()) {
+        const bool wasBlocked = qGlobalRescueQualityBlocked();
+        q_global_rescue_quality_cooldown = std::max(
+            q_global_rescue_quality_cooldown,
+            q_learning_global_rescue_quality_cooldown);
+        if (!wasBlocked) {
+            stats.qGlobalRescueQualityBlocks++;
         }
     }
 }
@@ -1310,6 +1343,43 @@ LRUEmissary::qActionRescueQualityBlocked(int action) const
         q_rescue_quality_cooldowns[action] > 0;
 }
 
+double
+LRUEmissary::qGlobalRescueUsefulPct() const
+{
+    if (q_global_rescue_samples == 0) {
+        return 0.0;
+    }
+    return 100.0 *
+        (static_cast<double>(q_global_rescue_successes) /
+         static_cast<double>(q_global_rescue_samples));
+}
+
+bool
+LRUEmissary::qGlobalRescueQualityPoor() const
+{
+    if (!q_learning_global_rescue_quality_gate ||
+        q_learning_global_rescue_quality_min_samples <= 0 ||
+        q_learning_global_min_rescue_useful_pct <= 0.0) {
+        return false;
+    }
+
+    if (q_global_rescue_samples <
+        static_cast<uint64_t>(
+            q_learning_global_rescue_quality_min_samples)) {
+        return false;
+    }
+
+    return qGlobalRescueUsefulPct() <
+        q_learning_global_min_rescue_useful_pct;
+}
+
+bool
+LRUEmissary::qGlobalRescueQualityBlocked() const
+{
+    return q_learning_global_rescue_quality_gate &&
+        q_global_rescue_quality_cooldown > 0;
+}
+
 void
 LRUEmissary::qTickActionCooldowns()
 {
@@ -1324,6 +1394,9 @@ LRUEmissary::qTickActionCooldowns()
         if (q_rescue_quality_cooldowns[action] > 0) {
             q_rescue_quality_cooldowns[action]--;
         }
+    }
+    if (q_global_rescue_quality_cooldown > 0) {
+        q_global_rescue_quality_cooldown--;
     }
     for (auto& cooldown : q_set_data_pollution_cooldowns) {
         if (cooldown > 0) {
@@ -1357,6 +1430,11 @@ LRUEmissary::qRecoverActionQuality()
 int
 LRUEmissary::qChooseAction(int state)
 {
+    if (qGlobalRescueQualityBlocked()) {
+        stats.qGlobalRescueQualitySkips++;
+        return 0;
+    }
+
     std::vector<int> candidates;
     candidates.reserve(q_num_actions);
     for (int action = 0; action < q_num_actions; action++) {
@@ -1545,11 +1623,16 @@ LRUEmissary::qUpdate(
 
     const bool rescueQualityBlocked =
         qActionRescueQualityBlocked(activeAction);
+    const bool globalRescueQualityBlocked =
+        qGlobalRescueQualityBlocked();
 
     bool qValueUpdated = false;
     if (q_has_last && !noEffectEpoch) {
         double nextBest = -std::numeric_limits<double>::infinity();
         for (int action = 0; action < q_num_actions; action++) {
+            if (globalRescueQualityBlocked && action > 0) {
+                continue;
+            }
             if (qActionCoolingDown(action)) {
                 continue;
             }
@@ -1590,8 +1673,11 @@ LRUEmissary::qUpdate(
     if (rescueQualityBlocked) {
         stats.qRescueQualityForces++;
     }
+    if (globalRescueQualityBlocked) {
+        stats.qGlobalRescueQualityForces++;
+    }
     if (noEffectEpoch || guardForced || actionQualityBlocked ||
-        rescueQualityBlocked) {
+        rescueQualityBlocked || globalRescueQualityBlocked) {
         nextAction = 0;
     } else {
         nextAction = qChooseAction(nextState);
@@ -1690,6 +1776,8 @@ LRUEmissary::qLogEpoch(
         qActionRescueQualityBlocked(activeAction) : false;
     const int activeActionRescueQualityCooldown = activeActionInRange ?
         q_rescue_quality_cooldowns[activeAction] : 0;
+    const bool globalRescueQualityBlocked = qGlobalRescueQualityBlocked();
+    const double globalRescueUsefulPct = qGlobalRescueUsefulPct();
     const bool causalFillFeedback =
         activeActionProtectionEvents > 0 || activeActionUsefulHits > 0;
     if (!q_log_header_written) {
@@ -1713,7 +1801,11 @@ LRUEmissary::qLogEpoch(
               << "action_rescue_useful_samples,"
               << "action_rescue_wasted_samples,action_rescue_useful_pct,"
               << "action_rescue_quality_blocked,"
-              << "action_rescue_quality_cooldown,action_warmup_attempts,"
+              << "action_rescue_quality_cooldown,"
+              << "global_rescue_samples,global_rescue_useful_samples,"
+              << "global_rescue_wasted_samples,global_rescue_useful_pct,"
+              << "global_rescue_quality_blocked,"
+              << "global_rescue_quality_cooldown,action_warmup_attempts,"
               << "no_effect_epoch,q_value_updated,"
               << "set_data_pollution_marks,set_data_pollution_rejects,"
              << "preserve_reuse_per_admission,preserve_clears,"
@@ -1776,6 +1868,12 @@ LRUEmissary::qLogEpoch(
           << "," << activeActionRescueUsefulPct
           << "," << (activeActionRescueQualityBlocked ? 1 : 0)
           << "," << activeActionRescueQualityCooldown
+          << "," << q_global_rescue_samples
+          << "," << q_global_rescue_successes
+          << "," << q_global_rescue_wastes
+          << "," << globalRescueUsefulPct
+          << "," << (globalRescueQualityBlocked ? 1 : 0)
+          << "," << q_global_rescue_quality_cooldown
           << ","
           << (activeActionInRange ?
               q_action_warmup_attempts[activeAction] : 0)
@@ -1879,6 +1977,12 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of Q-learning actions forced to OFF by rescue quality"),
     ADD_STAT(qRescueQualitySkips, statistics::units::Count::get(),
              "Number of rescue-quality-blocked actions skipped during selection"),
+    ADD_STAT(qGlobalRescueQualityBlocks, statistics::units::Count::get(),
+             "Number of global rescue-quality cooldown activations"),
+    ADD_STAT(qGlobalRescueQualityForces, statistics::units::Count::get(),
+             "Number of epochs forced to OFF by global rescue quality"),
+    ADD_STAT(qGlobalRescueQualitySkips, statistics::units::Count::get(),
+             "Number of action selections skipped by global rescue quality"),
     ADD_STAT(qLearningActionSum, statistics::units::Count::get(),
              "Sum of Q-learning admission rates in milli-percent"),
     ADD_STAT(qLearningPreserveWaySum, statistics::units::Count::get(),

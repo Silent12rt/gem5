@@ -109,7 +109,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "during warm-up",
     )
     q_learning_action_warmup_max_attempts = Param.Unsigned(
-        6, "Maximum warm-up selections allowed for each non-OFF action"
+        8, "Maximum warm-up selections allowed for each non-OFF action"
     )
     q_learning_target_saturation = Param.Float(
         10.0, "Saturated-set budget used by Q-learning reward"
@@ -250,7 +250,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "too few useful hits",
     )
     q_learning_rescue_quality_min_samples = Param.Int(
-        12,
+        16,
         "Completed rescue outcomes required before applying rescue quality gate",
     )
     q_learning_min_rescue_useful_pct = Param.Float(
@@ -258,8 +258,26 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "Minimum useful-hit percentage among completed rescue outcomes",
     )
     q_learning_rescue_quality_cooldown = Param.Int(
-        128,
+        64,
         "Epochs to suppress an action after poor rescue useful rate",
+    )
+    q_learning_global_rescue_quality_gate = Param.Bool(
+        True,
+        "Temporarily force OFF when the workload-wide completed rescue "
+        "outcomes have too few useful hits",
+    )
+    q_learning_global_rescue_quality_min_samples = Param.Int(
+        48,
+        "Completed rescue outcomes required before applying the global "
+        "rescue quality gate",
+    )
+    q_learning_global_min_rescue_useful_pct = Param.Float(
+        3.0,
+        "Minimum useful-hit percentage among workload-wide rescue outcomes",
+    )
+    q_learning_global_rescue_quality_cooldown = Param.Int(
+        128,
+        "Epochs to force OFF after poor workload-wide rescue useful rate",
     )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"

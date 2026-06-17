@@ -52,7 +52,7 @@ RL_EPSILON=${RL_EPSILON:-0.10}
 RL_ALPHA=${RL_ALPHA:-0.2}
 RL_GAMMA=${RL_GAMMA:-0.8}
 RL_ACTION_WARMUP_EFFECTIVE_EPOCHS=${RL_ACTION_WARMUP_EFFECTIVE_EPOCHS:-4}
-RL_ACTION_WARMUP_MAX_ATTEMPTS=${RL_ACTION_WARMUP_MAX_ATTEMPTS:-6}
+RL_ACTION_WARMUP_MAX_ATTEMPTS=${RL_ACTION_WARMUP_MAX_ATTEMPTS:-8}
 RL_MIN_PRESERVE_WAYS=${RL_MIN_PRESERVE_WAYS:-0}
 RL_DEFAULT_ACTION=${RL_DEFAULT_ACTION:-0}
 RL_PRESERVE_GRACE_EPOCHS=${RL_PRESERVE_GRACE_EPOCHS:-32}
@@ -93,9 +93,13 @@ RL_QUALITY_DATA_WEIGHT=${RL_QUALITY_DATA_WEIGHT:-2.0}
 RL_QUALITY_TOTAL_WEIGHT=${RL_QUALITY_TOTAL_WEIGHT:-1.0}
 RL_QUALITY_PRESERVED_DATA_WEIGHT=${RL_QUALITY_PRESERVED_DATA_WEIGHT:-64.0}
 RL_RESCUE_QUALITY_GATE=${RL_RESCUE_QUALITY_GATE:-1}
-RL_RESCUE_QUALITY_MIN_SAMPLES=${RL_RESCUE_QUALITY_MIN_SAMPLES:-12}
+RL_RESCUE_QUALITY_MIN_SAMPLES=${RL_RESCUE_QUALITY_MIN_SAMPLES:-16}
 RL_MIN_RESCUE_USEFUL_PCT=${RL_MIN_RESCUE_USEFUL_PCT:-5.0}
-RL_RESCUE_QUALITY_COOLDOWN=${RL_RESCUE_QUALITY_COOLDOWN:-128}
+RL_RESCUE_QUALITY_COOLDOWN=${RL_RESCUE_QUALITY_COOLDOWN:-64}
+RL_GLOBAL_RESCUE_QUALITY_GATE=${RL_GLOBAL_RESCUE_QUALITY_GATE:-1}
+RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES=${RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES:-48}
+RL_GLOBAL_MIN_RESCUE_USEFUL_PCT=${RL_GLOBAL_MIN_RESCUE_USEFUL_PCT:-3.0}
+RL_GLOBAL_RESCUE_QUALITY_COOLDOWN=${RL_GLOBAL_RESCUE_QUALITY_COOLDOWN:-128}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -229,6 +233,11 @@ run_rl_suite() {
     if [[ "${RL_RESCUE_QUALITY_GATE}" != "1" ]]; then
         rescue_quality_gate_args+=(--q-learning-disable-rescue-quality-gate)
     fi
+    local global_rescue_quality_gate_args=()
+    if [[ "${RL_GLOBAL_RESCUE_QUALITY_GATE}" != "1" ]]; then
+        global_rescue_quality_gate_args+=(
+            --q-learning-disable-global-rescue-quality-gate)
+    fi
 
     local seed
     for seed in ${RL_SEEDS}; do
@@ -280,12 +289,16 @@ run_rl_suite() {
             --q-learning-rescue-quality-min-samples="${RL_RESCUE_QUALITY_MIN_SAMPLES}" \
             --q-learning-min-rescue-useful-pct="${RL_MIN_RESCUE_USEFUL_PCT}" \
             --q-learning-rescue-quality-cooldown="${RL_RESCUE_QUALITY_COOLDOWN}" \
+            --q-learning-global-rescue-quality-min-samples="${RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES}" \
+            --q-learning-global-min-rescue-useful-pct="${RL_GLOBAL_MIN_RESCUE_USEFUL_PCT}" \
+            --q-learning-global-rescue-quality-cooldown="${RL_GLOBAL_RESCUE_QUALITY_COOLDOWN}" \
             "${fill_guard_args[@]}" \
             "${data_guard_args[@]}" \
             "${data_pollution_guard_args[@]}" \
             "${set_data_pollution_filter_args[@]}" \
             "${quality_gate_args[@]}" \
             "${rescue_quality_gate_args[@]}" \
+            "${global_rescue_quality_gate_args[@]}" \
             --emissary-rng-seed="${seed}" \
             --emissary-enable \
             --emissary-require-iq-empty \

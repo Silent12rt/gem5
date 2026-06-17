@@ -161,7 +161,7 @@ export RL_EPSILON="${RL_EPSILON:-0.10}"
 export RL_ALPHA="${RL_ALPHA:-0.2}"
 export RL_GAMMA="${RL_GAMMA:-0.8}"
 export RL_ACTION_WARMUP_EFFECTIVE_EPOCHS="${RL_ACTION_WARMUP_EFFECTIVE_EPOCHS:-4}"
-export RL_ACTION_WARMUP_MAX_ATTEMPTS="${RL_ACTION_WARMUP_MAX_ATTEMPTS:-6}"
+export RL_ACTION_WARMUP_MAX_ATTEMPTS="${RL_ACTION_WARMUP_MAX_ATTEMPTS:-8}"
 export RL_MIN_PRESERVE_WAYS="${RL_MIN_PRESERVE_WAYS:-0}"
 export RL_DEFAULT_ACTION="${RL_DEFAULT_ACTION:-0}"
 export RL_PRESERVE_GRACE_EPOCHS="${RL_PRESERVE_GRACE_EPOCHS:-32}"
@@ -202,9 +202,13 @@ export RL_QUALITY_DATA_WEIGHT="${RL_QUALITY_DATA_WEIGHT:-2.0}"
 export RL_QUALITY_TOTAL_WEIGHT="${RL_QUALITY_TOTAL_WEIGHT:-1.0}"
 export RL_QUALITY_PRESERVED_DATA_WEIGHT="${RL_QUALITY_PRESERVED_DATA_WEIGHT:-64.0}"
 export RL_RESCUE_QUALITY_GATE="${RL_RESCUE_QUALITY_GATE:-1}"
-export RL_RESCUE_QUALITY_MIN_SAMPLES="${RL_RESCUE_QUALITY_MIN_SAMPLES:-12}"
+export RL_RESCUE_QUALITY_MIN_SAMPLES="${RL_RESCUE_QUALITY_MIN_SAMPLES:-16}"
 export RL_MIN_RESCUE_USEFUL_PCT="${RL_MIN_RESCUE_USEFUL_PCT:-5.0}"
-export RL_RESCUE_QUALITY_COOLDOWN="${RL_RESCUE_QUALITY_COOLDOWN:-128}"
+export RL_RESCUE_QUALITY_COOLDOWN="${RL_RESCUE_QUALITY_COOLDOWN:-64}"
+export RL_GLOBAL_RESCUE_QUALITY_GATE="${RL_GLOBAL_RESCUE_QUALITY_GATE:-1}"
+export RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES="${RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES:-48}"
+export RL_GLOBAL_MIN_RESCUE_USEFUL_PCT="${RL_GLOBAL_MIN_RESCUE_USEFUL_PCT:-3.0}"
+export RL_GLOBAL_RESCUE_QUALITY_COOLDOWN="${RL_GLOBAL_RESCUE_QUALITY_COOLDOWN:-128}"
 
 if [[ ! -f "${RUNNER}" ]]; then
     echo "runner not found: ${RUNNER}" >&2
@@ -230,7 +234,7 @@ echo "  RL action warmup: rescue_samples=${RL_ACTION_WARMUP_EFFECTIVE_EPOCHS}, m
 echo "  RL preserve grace: ${RL_PRESERVE_GRACE_EPOCHS} flush epochs"
 echo "  RL candidate filter: sample_rate=${RL_SAMPLE_RATE}, starve_atleast=${RL_STARVE_ATLEAST}, starve_randomness=${RL_STARVE_RANDOMNESS}"
 echo "  RL targets: saturation=${RL_TARGET_SATURATION}, occupancy=${RL_TARGET_OCCUPANCY}"
-echo "  RL_Q: preserve_hit=${RL_Q_REWARD_PRESERVE_HIT}, wasted_rescue_penalty=${RL_Q_PENALTY_WASTED_RESCUE}, inst_reduction_reward=${RL_Q_REWARD_INST_FILL_REDUCTION}, total_reduction_reward=${RL_Q_REWARD_TOTAL_FILL_REDUCTION}, inst_regression_penalty=${RL_Q_PENALTY_INST_FILL_REGRESSION}, data_regression_penalty=${RL_Q_PENALTY_DATA_FILL_REGRESSION}, total_regression_penalty=${RL_Q_PENALTY_TOTAL_FILL_REGRESSION}, admitted_penalty=${RL_Q_PENALTY_ADMITTED_PRESERVE}, pressure_penalty=${RL_Q_PENALTY_ADMISSION_PRESSURE}, clear_penalty=${RL_Q_PENALTY_PRESERVE_CLEAR}, occupancy_penalty=${RL_Q_PENALTY_PRESERVE_OCCUPANCY}, inst_fill_penalty=${RL_Q_PENALTY_INST_FILL}, data_fill_penalty=${RL_Q_PENALTY_DATA_FILL}, fill_guard=${RL_FILL_REGRESSION_GUARD}, data_guard=${RL_DATA_REGRESSION_GUARD}, data_pollution_guard=${RL_DATA_POLLUTION_GUARD}, data_pollution_threshold=${RL_DATA_POLLUTION_THRESHOLD}, set_data_filter=${RL_SET_DATA_POLLUTION_FILTER}, set_data_cooldown=${RL_SET_DATA_POLLUTION_COOLDOWN}, bad_action_cooldown=${RL_BAD_ACTION_COOLDOWN}, quality_gate=${RL_ACTION_QUALITY_GATE}, min_quality=${RL_MIN_ACTION_QUALITY}, quality_alpha=${RL_ACTION_QUALITY_ALPHA}, quality_recovery=${RL_ACTION_QUALITY_RECOVERY}, quality_weights=data:${RL_QUALITY_DATA_WEIGHT}/total:${RL_QUALITY_TOTAL_WEIGHT}/preserved_data:${RL_QUALITY_PRESERVED_DATA_WEIGHT}, rescue_quality_gate=${RL_RESCUE_QUALITY_GATE}, rescue_quality_min_samples=${RL_RESCUE_QUALITY_MIN_SAMPLES}, min_rescue_useful_pct=${RL_MIN_RESCUE_USEFUL_PCT}, rescue_quality_cooldown=${RL_RESCUE_QUALITY_COOLDOWN}, reuse_cap=${RL_REUSE_CAP}, inst_baseline_alpha=${RL_INST_BASELINE_ALPHA}"
+echo "  RL_Q: preserve_hit=${RL_Q_REWARD_PRESERVE_HIT}, wasted_rescue_penalty=${RL_Q_PENALTY_WASTED_RESCUE}, inst_reduction_reward=${RL_Q_REWARD_INST_FILL_REDUCTION}, total_reduction_reward=${RL_Q_REWARD_TOTAL_FILL_REDUCTION}, inst_regression_penalty=${RL_Q_PENALTY_INST_FILL_REGRESSION}, data_regression_penalty=${RL_Q_PENALTY_DATA_FILL_REGRESSION}, total_regression_penalty=${RL_Q_PENALTY_TOTAL_FILL_REGRESSION}, admitted_penalty=${RL_Q_PENALTY_ADMITTED_PRESERVE}, pressure_penalty=${RL_Q_PENALTY_ADMISSION_PRESSURE}, clear_penalty=${RL_Q_PENALTY_PRESERVE_CLEAR}, occupancy_penalty=${RL_Q_PENALTY_PRESERVE_OCCUPANCY}, inst_fill_penalty=${RL_Q_PENALTY_INST_FILL}, data_fill_penalty=${RL_Q_PENALTY_DATA_FILL}, fill_guard=${RL_FILL_REGRESSION_GUARD}, data_guard=${RL_DATA_REGRESSION_GUARD}, data_pollution_guard=${RL_DATA_POLLUTION_GUARD}, data_pollution_threshold=${RL_DATA_POLLUTION_THRESHOLD}, set_data_filter=${RL_SET_DATA_POLLUTION_FILTER}, set_data_cooldown=${RL_SET_DATA_POLLUTION_COOLDOWN}, bad_action_cooldown=${RL_BAD_ACTION_COOLDOWN}, quality_gate=${RL_ACTION_QUALITY_GATE}, min_quality=${RL_MIN_ACTION_QUALITY}, quality_alpha=${RL_ACTION_QUALITY_ALPHA}, quality_recovery=${RL_ACTION_QUALITY_RECOVERY}, quality_weights=data:${RL_QUALITY_DATA_WEIGHT}/total:${RL_QUALITY_TOTAL_WEIGHT}/preserved_data:${RL_QUALITY_PRESERVED_DATA_WEIGHT}, rescue_quality_gate=${RL_RESCUE_QUALITY_GATE}, rescue_quality_min_samples=${RL_RESCUE_QUALITY_MIN_SAMPLES}, min_rescue_useful_pct=${RL_MIN_RESCUE_USEFUL_PCT}, rescue_quality_cooldown=${RL_RESCUE_QUALITY_COOLDOWN}, global_rescue_quality_gate=${RL_GLOBAL_RESCUE_QUALITY_GATE}, global_rescue_quality_min_samples=${RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES}, global_min_rescue_useful_pct=${RL_GLOBAL_MIN_RESCUE_USEFUL_PCT}, global_rescue_quality_cooldown=${RL_GLOBAL_RESCUE_QUALITY_COOLDOWN}, reuse_cap=${RL_REUSE_CAP}, inst_baseline_alpha=${RL_INST_BASELINE_ALPHA}"
 if [[ -n "${MAXINSTS}" ]]; then
     echo "  MAXINSTS: ${MAXINSTS}"
 fi

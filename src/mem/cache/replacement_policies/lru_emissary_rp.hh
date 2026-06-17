@@ -141,6 +141,10 @@ class LRUEmissary : public Base
     int q_learning_rescue_quality_min_samples;
     double q_learning_min_rescue_useful_pct;
     int q_learning_rescue_quality_cooldown;
+    bool q_learning_global_rescue_quality_gate;
+    int q_learning_global_rescue_quality_min_samples;
+    double q_learning_global_min_rescue_useful_pct;
+    int q_learning_global_rescue_quality_cooldown;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -163,6 +167,10 @@ class LRUEmissary : public Base
     std::vector<uint64_t> q_action_rescue_successes;
     std::vector<uint64_t> q_action_rescue_wastes;
     std::vector<int> q_rescue_quality_cooldowns;
+    uint64_t q_global_rescue_samples;
+    uint64_t q_global_rescue_successes;
+    uint64_t q_global_rescue_wastes;
+    int q_global_rescue_quality_cooldown;
     std::vector<int> q_set_data_pollution_cooldowns;
     std::vector<uint64_t> q_pending_useful_credits;
     std::vector<uint64_t> q_pending_wasted_penalties;
@@ -214,6 +222,9 @@ class LRUEmissary : public Base
         statistics::Scalar qRescueQualityBlocks;
         statistics::Scalar qRescueQualityForces;
         statistics::Scalar qRescueQualitySkips;
+        statistics::Scalar qGlobalRescueQualityBlocks;
+        statistics::Scalar qGlobalRescueQualityForces;
+        statistics::Scalar qGlobalRescueQualitySkips;
         statistics::Scalar qLearningActionSum;
         statistics::Scalar qLearningPreserveWaySum;
         statistics::Scalar qAdmissionAccepts;
@@ -302,6 +313,9 @@ class LRUEmissary : public Base
     bool qActionRescueQualityBlocked(int action) const;
     bool qActionRescueQualityPoor(int action) const;
     double qActionRescueUsefulPct(int action) const;
+    bool qGlobalRescueQualityBlocked() const;
+    bool qGlobalRescueQualityPoor() const;
+    double qGlobalRescueUsefulPct() const;
     void qTickActionCooldowns();
     bool qRecoverActionQuality();
     void qClearLineTracking(
