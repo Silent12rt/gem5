@@ -267,7 +267,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "outcomes have too few useful hits",
     )
     q_learning_global_rescue_quality_min_samples = Param.Int(
-        48,
+        16,
         "Completed rescue outcomes required before applying the global "
         "rescue quality gate",
     )

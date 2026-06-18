@@ -1,0 +1,1 @@
+sudo docker exec -it gem5_cache /bin/bash
