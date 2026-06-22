@@ -279,6 +279,21 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         128,
         "Epochs to force OFF after poor workload-wide rescue useful rate",
     )
+    q_learning_global_rescue_soft_cap_min_useful_pct = Param.Float(
+        8.0,
+        "Below this workload-wide useful-hit percentage, allow only low-risk "
+        "Q-learning actions instead of the full action set",
+    )
+    q_learning_global_rescue_soft_cap_max_admission_rate = Param.Float(
+        6.25,
+        "Maximum preserve admission percentage allowed while the global "
+        "rescue soft cap is active",
+    )
+    q_learning_global_rescue_soft_cap_max_preserve_ways = Param.Int(
+        1,
+        "Maximum effective preserve ways allowed while the global rescue "
+        "soft cap is active",
+    )
     q_learning_set_guard = Param.Bool(
         True, "Reject preserve admissions in sets already at preserve capacity"
     )

@@ -130,6 +130,12 @@ LRUEmissary::LRUEmissary(const Params &p)
           p.q_learning_global_min_rescue_useful_pct),
       q_learning_global_rescue_quality_cooldown(
           p.q_learning_global_rescue_quality_cooldown),
+      q_learning_global_rescue_soft_cap_min_useful_pct(
+          p.q_learning_global_rescue_soft_cap_min_useful_pct),
+      q_learning_global_rescue_soft_cap_max_admission_rate(
+          p.q_learning_global_rescue_soft_cap_max_admission_rate),
+      q_learning_global_rescue_soft_cap_max_preserve_ways(
+          p.q_learning_global_rescue_soft_cap_max_preserve_ways),
       q_learning_set_guard(p.q_learning_set_guard),
       q_learning_seed(p.q_learning_seed),
       q_num_actions(0),
@@ -229,6 +235,15 @@ LRUEmissary::LRUEmissary(const Params &p)
         0.0, std::min(100.0, q_learning_global_min_rescue_useful_pct));
     q_learning_global_rescue_quality_cooldown =
         std::max(0, q_learning_global_rescue_quality_cooldown);
+    q_learning_global_rescue_soft_cap_min_useful_pct = std::max(
+        0.0, std::min(100.0,
+            q_learning_global_rescue_soft_cap_min_useful_pct));
+    q_learning_global_rescue_soft_cap_max_admission_rate = std::max(
+        0.0, std::min(100.0,
+            q_learning_global_rescue_soft_cap_max_admission_rate));
+    q_learning_global_rescue_soft_cap_max_preserve_ways = std::max(
+        0, std::min(preserve_ways,
+            q_learning_global_rescue_soft_cap_max_preserve_ways));
     q_penalty_wasted_rescue = std::max(0.0, q_penalty_wasted_rescue);
 
     const std::size_t actionCount = std::min(
@@ -1380,6 +1395,42 @@ LRUEmissary::qGlobalRescueQualityBlocked() const
         q_global_rescue_quality_cooldown > 0;
 }
 
+bool
+LRUEmissary::qGlobalRescueSoftCapActive() const
+{
+    if (!q_learning_global_rescue_quality_gate ||
+        q_learning_global_rescue_quality_min_samples <= 0 ||
+        q_learning_global_rescue_soft_cap_min_useful_pct <= 0.0) {
+        return false;
+    }
+
+    if (q_global_rescue_samples <
+        static_cast<uint64_t>(
+            q_learning_global_rescue_quality_min_samples)) {
+        return false;
+    }
+
+    return qGlobalRescueUsefulPct() <
+        q_learning_global_rescue_soft_cap_min_useful_pct;
+}
+
+bool
+LRUEmissary::qActionPassesGlobalSoftCap(int action) const
+{
+    if (!qGlobalRescueSoftCapActive()) {
+        return true;
+    }
+
+    if (action <= 0) {
+        return true;
+    }
+
+    return qActionToAdmissionRate(action) <=
+            q_learning_global_rescue_soft_cap_max_admission_rate &&
+        qActionToPreserveWays(action) <=
+            q_learning_global_rescue_soft_cap_max_preserve_ways;
+}
+
 void
 LRUEmissary::qTickActionCooldowns()
 {
@@ -1448,6 +1499,10 @@ LRUEmissary::qChooseAction(int state)
         }
         if (qActionRescueQualityBlocked(action)) {
             stats.qRescueQualitySkips++;
+            continue;
+        }
+        if (!qActionPassesGlobalSoftCap(action)) {
+            stats.qGlobalRescueSoftCapSkips++;
             continue;
         }
         candidates.push_back(action);
@@ -1642,6 +1697,9 @@ LRUEmissary::qUpdate(
             if (qActionRescueQualityBlocked(action)) {
                 continue;
             }
+            if (!qActionPassesGlobalSoftCap(action)) {
+                continue;
+            }
             nextBest = std::max(
                 nextBest, q_values[nextState * q_num_actions + action]);
         }
@@ -1778,6 +1836,7 @@ LRUEmissary::qLogEpoch(
         q_rescue_quality_cooldowns[activeAction] : 0;
     const bool globalRescueQualityBlocked = qGlobalRescueQualityBlocked();
     const double globalRescueUsefulPct = qGlobalRescueUsefulPct();
+    const bool globalRescueSoftCapActive = qGlobalRescueSoftCapActive();
     const bool causalFillFeedback =
         activeActionProtectionEvents > 0 || activeActionUsefulHits > 0;
     if (!q_log_header_written) {
@@ -1805,7 +1864,12 @@ LRUEmissary::qLogEpoch(
               << "global_rescue_samples,global_rescue_useful_samples,"
               << "global_rescue_wasted_samples,global_rescue_useful_pct,"
               << "global_rescue_quality_blocked,"
-              << "global_rescue_quality_cooldown,action_warmup_attempts,"
+              << "global_rescue_quality_cooldown,"
+              << "global_rescue_soft_cap_active,"
+              << "global_rescue_soft_cap_min_useful_pct,"
+              << "global_rescue_soft_cap_max_admission_rate,"
+              << "global_rescue_soft_cap_max_preserve_ways,"
+              << "action_warmup_attempts,"
               << "no_effect_epoch,q_value_updated,"
               << "set_data_pollution_marks,set_data_pollution_rejects,"
              << "preserve_reuse_per_admission,preserve_clears,"
@@ -1874,6 +1938,10 @@ LRUEmissary::qLogEpoch(
           << "," << globalRescueUsefulPct
           << "," << (globalRescueQualityBlocked ? 1 : 0)
           << "," << q_global_rescue_quality_cooldown
+          << "," << (globalRescueSoftCapActive ? 1 : 0)
+          << "," << q_learning_global_rescue_soft_cap_min_useful_pct
+          << "," << q_learning_global_rescue_soft_cap_max_admission_rate
+          << "," << q_learning_global_rescue_soft_cap_max_preserve_ways
           << ","
           << (activeActionInRange ?
               q_action_warmup_attempts[activeAction] : 0)
@@ -1983,6 +2051,8 @@ LRUEmissary::LRUEmissaryStats::LRUEmissaryStats(statistics::Group* parent)
              "Number of epochs forced to OFF by global rescue quality"),
     ADD_STAT(qGlobalRescueQualitySkips, statistics::units::Count::get(),
              "Number of action selections skipped by global rescue quality"),
+    ADD_STAT(qGlobalRescueSoftCapSkips, statistics::units::Count::get(),
+             "Number of actions skipped by global rescue soft cap"),
     ADD_STAT(qLearningActionSum, statistics::units::Count::get(),
              "Sum of Q-learning admission rates in milli-percent"),
     ADD_STAT(qLearningPreserveWaySum, statistics::units::Count::get(),

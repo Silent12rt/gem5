@@ -100,6 +100,9 @@ RL_GLOBAL_RESCUE_QUALITY_GATE=${RL_GLOBAL_RESCUE_QUALITY_GATE:-1}
 RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES=${RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES:-16}
 RL_GLOBAL_MIN_RESCUE_USEFUL_PCT=${RL_GLOBAL_MIN_RESCUE_USEFUL_PCT:-3.0}
 RL_GLOBAL_RESCUE_QUALITY_COOLDOWN=${RL_GLOBAL_RESCUE_QUALITY_COOLDOWN:-128}
+RL_GLOBAL_RESCUE_SOFT_CAP_MIN_USEFUL_PCT=${RL_GLOBAL_RESCUE_SOFT_CAP_MIN_USEFUL_PCT:-8.0}
+RL_GLOBAL_RESCUE_SOFT_CAP_MAX_ADMISSION_RATE=${RL_GLOBAL_RESCUE_SOFT_CAP_MAX_ADMISSION_RATE:-6.25}
+RL_GLOBAL_RESCUE_SOFT_CAP_MAX_PRESERVE_WAYS=${RL_GLOBAL_RESCUE_SOFT_CAP_MAX_PRESERVE_WAYS:-1}
 
 CLEAN_OUTDIR=${CLEAN_OUTDIR:-1}
 DRY_RUN=${DRY_RUN:-0}
@@ -292,6 +295,9 @@ run_rl_suite() {
             --q-learning-global-rescue-quality-min-samples="${RL_GLOBAL_RESCUE_QUALITY_MIN_SAMPLES}" \
             --q-learning-global-min-rescue-useful-pct="${RL_GLOBAL_MIN_RESCUE_USEFUL_PCT}" \
             --q-learning-global-rescue-quality-cooldown="${RL_GLOBAL_RESCUE_QUALITY_COOLDOWN}" \
+            --q-learning-global-rescue-soft-cap-min-useful-pct="${RL_GLOBAL_RESCUE_SOFT_CAP_MIN_USEFUL_PCT}" \
+            --q-learning-global-rescue-soft-cap-max-admission-rate="${RL_GLOBAL_RESCUE_SOFT_CAP_MAX_ADMISSION_RATE}" \
+            --q-learning-global-rescue-soft-cap-max-preserve-ways="${RL_GLOBAL_RESCUE_SOFT_CAP_MAX_PRESERVE_WAYS}" \
             "${fill_guard_args[@]}" \
             "${data_guard_args[@]}" \
             "${data_pollution_guard_args[@]}" \

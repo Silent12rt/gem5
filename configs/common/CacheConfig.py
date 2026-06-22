@@ -462,6 +462,35 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_global_rescue_quality_cooldown = (
                     max(0, int(options.q_learning_global_rescue_quality_cooldown))
                 )
+                system.l2.replacement_policy.q_learning_global_rescue_soft_cap_min_useful_pct = (
+                    max(
+                        0.0,
+                        min(
+                            100.0,
+                            options.q_learning_global_rescue_soft_cap_min_useful_pct,
+                        ),
+                    )
+                )
+                system.l2.replacement_policy.q_learning_global_rescue_soft_cap_max_admission_rate = (
+                    max(
+                        0.0,
+                        min(
+                            100.0,
+                            options.q_learning_global_rescue_soft_cap_max_admission_rate,
+                        ),
+                    )
+                )
+                system.l2.replacement_policy.q_learning_global_rescue_soft_cap_max_preserve_ways = (
+                    max(
+                        0,
+                        min(
+                            preserve_ways,
+                            int(
+                                options.q_learning_global_rescue_soft_cap_max_preserve_ways
+                            ),
+                        ),
+                    )
+                )
                 system.l2.replacement_policy.q_learning_set_guard = (
                     not options.q_learning_disable_set_guard
                 )

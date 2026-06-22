@@ -332,6 +332,21 @@ def addNoISAOptions(parser):
     parser.add_argument(
         "--q-learning-global-rescue-quality-cooldown", type=int, default=128
     )
+    parser.add_argument(
+        "--q-learning-global-rescue-soft-cap-min-useful-pct",
+        type=float,
+        default=8.0,
+    )
+    parser.add_argument(
+        "--q-learning-global-rescue-soft-cap-max-admission-rate",
+        type=float,
+        default=6.25,
+    )
+    parser.add_argument(
+        "--q-learning-global-rescue-soft-cap-max-preserve-ways",
+        type=int,
+        default=1,
+    )
     parser.add_argument("--q-learning-disable-set-guard", action="store_true", default=False)
     parser.add_argument("--q-learning-seed", type=int, default=0)
 

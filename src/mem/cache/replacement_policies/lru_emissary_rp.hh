@@ -145,6 +145,9 @@ class LRUEmissary : public Base
     int q_learning_global_rescue_quality_min_samples;
     double q_learning_global_min_rescue_useful_pct;
     int q_learning_global_rescue_quality_cooldown;
+    double q_learning_global_rescue_soft_cap_min_useful_pct;
+    double q_learning_global_rescue_soft_cap_max_admission_rate;
+    int q_learning_global_rescue_soft_cap_max_preserve_ways;
     bool q_learning_set_guard;
     uint64_t q_learning_seed;
     int q_num_actions;
@@ -225,6 +228,7 @@ class LRUEmissary : public Base
         statistics::Scalar qGlobalRescueQualityBlocks;
         statistics::Scalar qGlobalRescueQualityForces;
         statistics::Scalar qGlobalRescueQualitySkips;
+        statistics::Scalar qGlobalRescueSoftCapSkips;
         statistics::Scalar qLearningActionSum;
         statistics::Scalar qLearningPreserveWaySum;
         statistics::Scalar qAdmissionAccepts;
@@ -316,6 +320,8 @@ class LRUEmissary : public Base
     bool qGlobalRescueQualityBlocked() const;
     bool qGlobalRescueQualityPoor() const;
     double qGlobalRescueUsefulPct() const;
+    bool qGlobalRescueSoftCapActive() const;
+    bool qActionPassesGlobalSoftCap(int action) const;
     void qTickActionCooldowns();
     bool qRecoverActionQuality();
     void qClearLineTracking(
