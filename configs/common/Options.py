@@ -333,6 +333,9 @@ def addNoISAOptions(parser):
         "--q-learning-global-rescue-quality-cooldown", type=int, default=128
     )
     parser.add_argument(
+        "--q-learning-global-rescue-soft-cap-min-samples", type=int, default=8
+    )
+    parser.add_argument(
         "--q-learning-global-rescue-soft-cap-min-useful-pct",
         type=float,
         default=8.0,

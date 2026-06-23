@@ -145,6 +145,7 @@ class LRUEmissary : public Base
     int q_learning_global_rescue_quality_min_samples;
     double q_learning_global_min_rescue_useful_pct;
     int q_learning_global_rescue_quality_cooldown;
+    int q_learning_global_rescue_soft_cap_min_samples;
     double q_learning_global_rescue_soft_cap_min_useful_pct;
     double q_learning_global_rescue_soft_cap_max_admission_rate;
     int q_learning_global_rescue_soft_cap_max_preserve_ways;

@@ -279,6 +279,11 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         128,
         "Epochs to force OFF after poor workload-wide rescue useful rate",
     )
+    q_learning_global_rescue_soft_cap_min_samples = Param.Int(
+        8,
+        "Completed rescue outcomes required before applying the global "
+        "rescue soft cap",
+    )
     q_learning_global_rescue_soft_cap_min_useful_pct = Param.Float(
         8.0,
         "Below this workload-wide useful-hit percentage, allow only low-risk "

@@ -130,6 +130,8 @@ LRUEmissary::LRUEmissary(const Params &p)
           p.q_learning_global_min_rescue_useful_pct),
       q_learning_global_rescue_quality_cooldown(
           p.q_learning_global_rescue_quality_cooldown),
+      q_learning_global_rescue_soft_cap_min_samples(
+          p.q_learning_global_rescue_soft_cap_min_samples),
       q_learning_global_rescue_soft_cap_min_useful_pct(
           p.q_learning_global_rescue_soft_cap_min_useful_pct),
       q_learning_global_rescue_soft_cap_max_admission_rate(
@@ -235,6 +237,8 @@ LRUEmissary::LRUEmissary(const Params &p)
         0.0, std::min(100.0, q_learning_global_min_rescue_useful_pct));
     q_learning_global_rescue_quality_cooldown =
         std::max(0, q_learning_global_rescue_quality_cooldown);
+    q_learning_global_rescue_soft_cap_min_samples =
+        std::max(0, q_learning_global_rescue_soft_cap_min_samples);
     q_learning_global_rescue_soft_cap_min_useful_pct = std::max(
         0.0, std::min(100.0,
             q_learning_global_rescue_soft_cap_min_useful_pct));
@@ -1399,14 +1403,14 @@ bool
 LRUEmissary::qGlobalRescueSoftCapActive() const
 {
     if (!q_learning_global_rescue_quality_gate ||
-        q_learning_global_rescue_quality_min_samples <= 0 ||
+        q_learning_global_rescue_soft_cap_min_samples <= 0 ||
         q_learning_global_rescue_soft_cap_min_useful_pct <= 0.0) {
         return false;
     }
 
     if (q_global_rescue_samples <
         static_cast<uint64_t>(
-            q_learning_global_rescue_quality_min_samples)) {
+            q_learning_global_rescue_soft_cap_min_samples)) {
         return false;
     }
 
@@ -1866,6 +1870,7 @@ LRUEmissary::qLogEpoch(
               << "global_rescue_quality_blocked,"
               << "global_rescue_quality_cooldown,"
               << "global_rescue_soft_cap_active,"
+              << "global_rescue_soft_cap_min_samples,"
               << "global_rescue_soft_cap_min_useful_pct,"
               << "global_rescue_soft_cap_max_admission_rate,"
               << "global_rescue_soft_cap_max_preserve_ways,"
@@ -1939,6 +1944,7 @@ LRUEmissary::qLogEpoch(
           << "," << (globalRescueQualityBlocked ? 1 : 0)
           << "," << q_global_rescue_quality_cooldown
           << "," << (globalRescueSoftCapActive ? 1 : 0)
+          << "," << q_learning_global_rescue_soft_cap_min_samples
           << "," << q_learning_global_rescue_soft_cap_min_useful_pct
           << "," << q_learning_global_rescue_soft_cap_max_admission_rate
           << "," << q_learning_global_rescue_soft_cap_max_preserve_ways

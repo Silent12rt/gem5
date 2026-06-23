@@ -462,6 +462,12 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_global_rescue_quality_cooldown = (
                     max(0, int(options.q_learning_global_rescue_quality_cooldown))
                 )
+                system.l2.replacement_policy.q_learning_global_rescue_soft_cap_min_samples = (
+                    max(
+                        0,
+                        int(options.q_learning_global_rescue_soft_cap_min_samples),
+                    )
+                )
                 system.l2.replacement_policy.q_learning_global_rescue_soft_cap_min_useful_pct = (
                     max(
                         0.0,
