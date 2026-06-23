@@ -503,6 +503,25 @@ def config_cache(options, system):
                 system.l2.replacement_policy.q_learning_seed = (
                     options.q_learning_seed
                 )
+        elif l2_rp in ("LRU", "LRURP"):
+            system.l2.replacement_policy = LRURP()
+        elif l2_rp in ("TreePLRU", "TreePLRURP", "TPLRU", "PLRU"):
+            system.l2.replacement_policy = TreePLRURP()
+        elif l2_rp in ("Random", "RandomRP"):
+            system.l2.replacement_policy = RandomRP()
+        elif l2_rp in ("BIP", "BIPRP"):
+            system.l2.replacement_policy = BIPRP()
+            system.l2.replacement_policy.btp = 3
+        elif l2_rp in ("LIP", "LIPRP"):
+            system.l2.replacement_policy = LIPRP()
+        elif l2_rp in ("RRIP", "RRIPRP"):
+            system.l2.replacement_policy = RRIPRP()
+            system.l2.replacement_policy.hit_priority = True
+        elif l2_rp in ("BRRIP", "BRRIPRP"):
+            system.l2.replacement_policy = BRRIPRP()
+            system.l2.replacement_policy.btp = 3
+        else:
+            fatal(f"Unsupported --l2_rp '{l2_rp}'")
 
         system.tol2bus = L2XBar(clk_domain=system.cpu_clk_domain)
         system.l2.cpu_side = system.tol2bus.mem_side_ports

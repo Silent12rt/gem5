@@ -75,3 +75,62 @@ def config_etrace(cpu_cls, cpu_list, options):
             " type or inherited from DerivO3CPU.",
             cpu_cls,
         )
+
+
+def create_fdip_branch_predictor(isa):
+    class FDIPBTB(m5.objects.SimpleBTB):
+        numEntries = 16 * 1024
+        associativity = 8
+
+    bp = m5.objects.BranchPredictor(
+        btb=FDIPBTB(),
+        conditionalBranchPred=m5.objects.TAGE_SC_L_64KB(),
+        requiresBTBHit=True,
+        takenOnlyHistory=True,
+    )
+
+    if isa == ISA.ARM:
+        bp.instShiftAmt = 2
+    elif isa == ISA.RISCV:
+        bp.instShiftAmt = 1
+    else:
+        bp.instShiftAmt = 0
+    return bp
+
+
+def config_fdip_emissary(cpu, options, isa):
+    if getattr(options, "fdip", False) and hasattr(cpu, "decoupledFrontEnd"):
+        cpu.decoupledFrontEnd = True
+        cpu.numFTQEntries = options.fdip_num_ftq_entries
+        cpu.fetchTargetWidth = options.fdip_fetch_target_width
+        if isa == ISA.ARM:
+            cpu.minInstSize = 4
+        elif isa == ISA.RISCV:
+            cpu.minInstSize = 2
+        else:
+            cpu.minInstSize = 1
+
+    if getattr(options, "emissary_enable", False) or getattr(
+        options, "emissary_retirement", False
+    ):
+        cpu.enableStarvationEMISSARY = True
+
+    cpu.starveRandomness = options.starveRandomness
+    cpu.starveAtleast = options.starveAtleast
+    cpu.randomStarve = options.randomStarve
+    cpu.emissaryRequireIQEmpty = options.emissary_require_iq_empty
+    cpu.emissarySampleRate = options.emissary_sample_rate
+    cpu.emissaryRngSeed = options.emissary_rng_seed
+
+
+def retarget_fdip_prefetchers(system, cpu_list):
+    for i, cpu in enumerate(cpu_list):
+        if i >= len(system.cpu):
+            continue
+        icache = getattr(system.cpu[i], "icache", None)
+        prefetcher = getattr(icache, "prefetcher", None)
+        if not isinstance(prefetcher, m5.objects.FetchDirectedPrefetcher):
+            continue
+        prefetcher.cpu = cpu
+        prefetcher._mmus = []
+        prefetcher.registerMMU(cpu.mmu)

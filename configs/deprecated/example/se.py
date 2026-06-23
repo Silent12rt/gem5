@@ -281,7 +281,9 @@ for i in range(np):
         bpClass = ObjectList.bp_list.get(args.bp_type)
         system.cpu[i].branchPred = bpClass()
     elif args.fdip:
-        system.cpu[i].branchPred = create_fdip_branch_predictor(args)
+        system.cpu[i].branchPred = CpuConfig.create_fdip_branch_predictor(
+            ObjectList.cpu_list.get_isa(args.cpu_type)
+        )
 
     if args.indirect_bp_type:
         indirectBPClass = ObjectList.indirect_bp_list.get(
@@ -289,26 +291,9 @@ for i in range(np):
         )
         system.cpu[i].branchPred.indirectBranchPred = indirectBPClass()
 
-    if args.fdip:
-        system.cpu[i].decoupledFrontEnd = True
-        system.cpu[i].numFTQEntries = args.fdip_num_ftq_entries
-        system.cpu[i].fetchTargetWidth = args.fdip_fetch_target_width
-        isa = ObjectList.cpu_list.get_isa(args.cpu_type)
-        if isa == ISA.ARM:
-            system.cpu[i].minInstSize = 4
-        elif isa == ISA.RISCV:
-            system.cpu[i].minInstSize = 2
-        else:
-            system.cpu[i].minInstSize = 1
-
-    if args.emissary_enable or args.emissary_retirement:
-        system.cpu[i].enableStarvationEMISSARY = True
-    system.cpu[i].starveRandomness = args.starveRandomness
-    system.cpu[i].starveAtleast = args.starveAtleast
-    system.cpu[i].randomStarve = args.randomStarve
-    system.cpu[i].emissaryRequireIQEmpty = args.emissary_require_iq_empty
-    system.cpu[i].emissarySampleRate = args.emissary_sample_rate
-    system.cpu[i].emissaryRngSeed = args.emissary_rng_seed
+    CpuConfig.config_fdip_emissary(
+        system.cpu[i], args, ObjectList.cpu_list.get_isa(args.cpu_type)
+    )
 
     system.cpu[i].createThreads()
 

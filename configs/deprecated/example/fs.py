@@ -173,6 +173,24 @@ def build_test_system(np, isa: ISA):
             # Tie the cpu ports to the correct ruby system ports
             #
             cpu.clk_domain = test_sys.cpu_clk_domain
+            if not ObjectList.is_kvm_cpu(TestCPUClass) and hasattr(
+                cpu, "branchPred"
+            ):
+                if args.bp_type:
+                    bpClass = ObjectList.bp_list.get(args.bp_type)
+                    cpu.branchPred = bpClass()
+                elif args.fdip:
+                    cpu.branchPred = CpuConfig.create_fdip_branch_predictor(
+                        ObjectList.cpu_list.get_isa(args.cpu_type)
+                    )
+                if args.indirect_bp_type:
+                    IndirectBPClass = ObjectList.indirect_bp_list.get(
+                        args.indirect_bp_type
+                    )
+                    cpu.branchPred.indirectBranchPred = IndirectBPClass()
+            CpuConfig.config_fdip_emissary(
+                cpu, args, ObjectList.cpu_list.get_isa(args.cpu_type)
+            )
             cpu.createThreads()
             cpu.createInterruptController()
 
@@ -205,10 +223,18 @@ def build_test_system(np, isa: ISA):
                 test_sys.cpu[i].addSimPointProbe(args.simpoint_interval)
             if args.checker:
                 test_sys.cpu[i].addCheckerCpu()
-            if not ObjectList.is_kvm_cpu(TestCPUClass):
+            if not ObjectList.is_kvm_cpu(TestCPUClass) and hasattr(
+                test_sys.cpu[i], "branchPred"
+            ):
                 if args.bp_type:
                     bpClass = ObjectList.bp_list.get(args.bp_type)
                     test_sys.cpu[i].branchPred = bpClass()
+                elif args.fdip:
+                    test_sys.cpu[i].branchPred = (
+                        CpuConfig.create_fdip_branch_predictor(
+                            ObjectList.cpu_list.get_isa(args.cpu_type)
+                        )
+                    )
                 if args.indirect_bp_type:
                     IndirectBPClass = ObjectList.indirect_bp_list.get(
                         args.indirect_bp_type
@@ -216,6 +242,11 @@ def build_test_system(np, isa: ISA):
                     test_sys.cpu[i].branchPred.indirectBranchPred = (
                         IndirectBPClass()
                     )
+            CpuConfig.config_fdip_emissary(
+                test_sys.cpu[i],
+                args,
+                ObjectList.cpu_list.get_isa(args.cpu_type),
+            )
             test_sys.cpu[i].createThreads()
 
         # If elastic tracing is enabled when not restoring from checkpoint and

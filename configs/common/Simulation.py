@@ -39,7 +39,10 @@
 
 import sys
 from os import getcwd
-from os.path import join as joinpath
+from os.path import (
+    isdir,
+    join as joinpath,
+)
 
 from common import (
     CpuConfig,
@@ -52,6 +55,12 @@ from m5.objects import *
 from m5.util import *
 
 addToPath("../common")
+
+
+def restoring_from_checkpoint(options):
+    return options.checkpoint_restore is not None or bool(
+        getattr(options, "checkpoint_path", None)
+    )
 
 
 def getCPUClass(cpu_type):
@@ -75,7 +84,7 @@ def setCPUClass(options):
     if TmpClass.require_caches() and not options.caches and not options.ruby:
         fatal(f"{options.cpu_type} must be used with caches")
 
-    if options.checkpoint_restore != None:
+    if restoring_from_checkpoint(options):
         if options.restore_with_cpu != options.cpu_type:
             CPUClass = TmpClass
             TmpClass, test_mem_mode = getCPUClass(options.restore_with_cpu)
@@ -479,7 +488,7 @@ def run(options, root, testsys, cpu_class):
     else:
         cptdir = getcwd()
 
-    if options.fast_forward and options.checkpoint_restore != None:
+    if options.fast_forward and restoring_from_checkpoint(options):
         fatal("Can't specify both --fast-forward and --checkpoint-restore")
 
     if options.standard_switch and not options.caches:
@@ -537,6 +546,12 @@ def run(options, root, testsys, cpu_class):
             if options.bp_type:
                 bpClass = ObjectList.bp_list.get(options.bp_type)
                 switch_cpus[i].branchPred = bpClass()
+            elif getattr(options, "fdip", False) and hasattr(
+                switch_cpus[i], "branchPred"
+            ):
+                switch_cpus[i].branchPred = CpuConfig.create_fdip_branch_predictor(
+                    ObjectList.cpu_list.get_isa(options.cpu_type)
+                )
             if options.indirect_bp_type:
                 IndirectBPClass = ObjectList.indirect_bp_list.get(
                     options.indirect_bp_type
@@ -544,12 +559,19 @@ def run(options, root, testsys, cpu_class):
                 switch_cpus[i].branchPred.indirectBranchPred = (
                     IndirectBPClass()
                 )
+            CpuConfig.config_fdip_emissary(
+                switch_cpus[i],
+                options,
+                ObjectList.cpu_list.get_isa(options.cpu_type),
+            )
             switch_cpus[i].createThreads()
 
         # If elastic tracing is enabled attach the elastic trace probe
         # to the switch CPUs
         if options.elastic_trace_en:
             CpuConfig.config_etrace(cpu_class, switch_cpus, options)
+        if getattr(options, "fdip", False):
+            CpuConfig.retarget_fdip_prefetchers(testsys, switch_cpus)
 
         testsys.switch_cpus = switch_cpus
         switch_cpu_list = [(testsys.cpu[i], switch_cpus[i]) for i in range(np)]
@@ -579,6 +601,11 @@ def run(options, root, testsys, cpu_class):
             if options.checker:
                 repeat_switch_cpus[i].addCheckerCpu()
 
+            CpuConfig.config_fdip_emissary(
+                repeat_switch_cpus[i],
+                options,
+                ObjectList.cpu_list.get_isa(options.cpu_type),
+            )
             repeat_switch_cpus[i].createThreads()
 
         testsys.repeat_switch_cpus = repeat_switch_cpus
@@ -611,7 +638,7 @@ def run(options, root, testsys, cpu_class):
             switch_cpus_1[i].isa = testsys.cpu[i].isa
 
             # if restoring, make atomic cpu simulate only a few instructions
-            if options.checkpoint_restore != None:
+            if restoring_from_checkpoint(options):
                 testsys.cpu[i].max_insts_any_thread = 1
             # Fast forward to specified location if we are not restoring
             elif options.fast_forward:
@@ -640,8 +667,35 @@ def run(options, root, testsys, cpu_class):
                 switch_cpus[i].addCheckerCpu()
                 switch_cpus_1[i].addCheckerCpu()
 
+            if options.bp_type:
+                bpClass = ObjectList.bp_list.get(options.bp_type)
+                switch_cpus_1[i].branchPred = bpClass()
+            elif getattr(options, "fdip", False) and hasattr(
+                switch_cpus_1[i], "branchPred"
+            ):
+                switch_cpus_1[i].branchPred = (
+                    CpuConfig.create_fdip_branch_predictor(
+                        ObjectList.cpu_list.get_isa(options.cpu_type)
+                    )
+                )
+            if options.indirect_bp_type:
+                IndirectBPClass = ObjectList.indirect_bp_list.get(
+                    options.indirect_bp_type
+                )
+                switch_cpus_1[i].branchPred.indirectBranchPred = (
+                    IndirectBPClass()
+                )
+
+            CpuConfig.config_fdip_emissary(
+                switch_cpus_1[i],
+                options,
+                ObjectList.cpu_list.get_isa(options.cpu_type),
+            )
             switch_cpus[i].createThreads()
             switch_cpus_1[i].createThreads()
+
+        if getattr(options, "fdip", False):
+            CpuConfig.retarget_fdip_prefetchers(testsys, switch_cpus_1)
 
         testsys.switch_cpus = switch_cpus
         testsys.switch_cpus_1 = switch_cpus_1
@@ -679,7 +733,13 @@ def run(options, root, testsys, cpu_class):
         )
 
     checkpoint_dir = None
-    if options.checkpoint_restore:
+    if getattr(options, "checkpoint_path", None):
+        if options.checkpoint_restore:
+            fatal("Use only one of --checkpoint-path or --checkpoint-restore")
+        if not isdir(options.checkpoint_path):
+            fatal("checkpoint path %s does not exist!", options.checkpoint_path)
+        checkpoint_dir = options.checkpoint_path
+    elif options.checkpoint_restore:
         cpt_starttick, checkpoint_dir = findCptDir(options, cptdir, testsys)
     root.apply_config(options.param)
     m5.instantiate(checkpoint_dir)
@@ -704,7 +764,7 @@ def run(options, root, testsys, cpu_class):
         explicit_maxticks += 1
     if options.rel_max_tick:
         maxtick_from_rel = options.rel_max_tick
-        if options.checkpoint_restore:
+        if restoring_from_checkpoint(options):
             # NOTE: this may need to be updated if checkpoints ever store
             # the ticks per simulated second
             maxtick_from_rel += cpt_starttick
@@ -726,7 +786,7 @@ def run(options, root, testsys, cpu_class):
         )
     maxtick = min([maxtick_from_abs, maxtick_from_rel, maxtick_from_maxtime])
 
-    if options.checkpoint_restore != None and maxtick < cpt_starttick:
+    if restoring_from_checkpoint(options) and maxtick < cpt_starttick:
         fatal(
             "Bad maxtick (%d) specified: "
             "Checkpoint starts starts from tick: %d",
@@ -771,6 +831,8 @@ def run(options, root, testsys, cpu_class):
                 % (testsys.switch_cpus_1[0].max_insts_any_thread)
             )
             m5.switchCpus(testsys, switch_cpu_list1)
+            if getattr(options, "reset_stats_after_warmup", False):
+                m5.stats.reset()
 
     # If we're taking and restoring checkpoints, use checkpoint_dir
     # option only for finding the checkpoints to restore from.  This
@@ -778,7 +840,7 @@ def run(options, root, testsys, cpu_class):
     # checkpoints, generating a second set, and then comparing them.
     if (
         options.take_checkpoints or options.take_simpoint_checkpoints
-    ) and options.checkpoint_restore:
+    ) and restoring_from_checkpoint(options):
         if m5.options.outdir:
             cptdir = m5.options.outdir
         else:

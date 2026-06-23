@@ -324,7 +324,7 @@ def addNoISAOptions(parser):
         default=False,
     )
     parser.add_argument(
-        "--q-learning-global-rescue-quality-min-samples", type=int, default=16
+        "--q-learning-global-rescue-quality-min-samples", type=int, default=12
     )
     parser.add_argument(
         "--q-learning-global-min-rescue-useful-pct", type=float, default=3.0
@@ -333,7 +333,7 @@ def addNoISAOptions(parser):
         "--q-learning-global-rescue-quality-cooldown", type=int, default=128
     )
     parser.add_argument(
-        "--q-learning-global-rescue-soft-cap-min-samples", type=int, default=8
+        "--q-learning-global-rescue-soft-cap-min-samples", type=int, default=16
     )
     parser.add_argument(
         "--q-learning-global-rescue-soft-cap-min-useful-pct",
@@ -715,6 +715,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         help="Place all checkpoints in this absolute directory",
     )
     parser.add_argument(
+        "--checkpoint-path",
+        action="store",
+        type=str,
+        help="Restore directly from this checkpoint directory",
+    )
+    parser.add_argument(
         "-r",
         "--checkpoint-restore",
         action="store",
@@ -782,6 +788,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         type=int,
         default=None,
         help="Warmup period in total instructions (requires --standard-switch)",
+    )
+    parser.add_argument(
+        "--reset-stats-after-warmup",
+        action="store_true",
+        default=False,
+        help="reset stats after standard-switch warmup before detailed run",
     )
     parser.add_argument(
         "--bench",
