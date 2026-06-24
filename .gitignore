@@ -41,3 +41,4 @@ configs/dram/lowp_sweep.cfg
 typings
 .DS_Store
 cangjie
+cache_paper

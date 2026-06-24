@@ -1209,17 +1209,6 @@ LRUEmissary::qRecordRescueOutcome(int action, bool useful)
         }
     }
 
-    if (q_learning_global_rescue_quality_gate &&
-        q_learning_global_rescue_quality_cooldown > 0 &&
-        qGlobalRescueQualityPoor()) {
-        const bool wasBlocked = qGlobalRescueQualityBlocked();
-        q_global_rescue_quality_cooldown = std::max(
-            q_global_rescue_quality_cooldown,
-            q_learning_global_rescue_quality_cooldown);
-        if (!wasBlocked) {
-            stats.qGlobalRescueQualityBlocks++;
-        }
-    }
 }
 
 void
@@ -1397,6 +1386,23 @@ LRUEmissary::qGlobalRescueQualityBlocked() const
 {
     return q_learning_global_rescue_quality_gate &&
         q_global_rescue_quality_cooldown > 0;
+}
+
+void
+LRUEmissary::qMaybeStartGlobalRescueQualityCooldown()
+{
+    if (q_learning_global_rescue_quality_cooldown <= 0 ||
+        !qGlobalRescueQualityPoor()) {
+        return;
+    }
+
+    const bool wasBlocked = qGlobalRescueQualityBlocked();
+    q_global_rescue_quality_cooldown = std::max(
+        q_global_rescue_quality_cooldown,
+        q_learning_global_rescue_quality_cooldown);
+    if (!wasBlocked) {
+        stats.qGlobalRescueQualityBlocks++;
+    }
 }
 
 bool
@@ -1682,6 +1688,7 @@ LRUEmissary::qUpdate(
 
     const bool rescueQualityBlocked =
         qActionRescueQualityBlocked(activeAction);
+    qMaybeStartGlobalRescueQualityCooldown();
     const bool globalRescueQualityBlocked =
         qGlobalRescueQualityBlocked();
 

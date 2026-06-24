@@ -321,6 +321,7 @@ class LRUEmissary : public Base
     bool qGlobalRescueQualityBlocked() const;
     bool qGlobalRescueQualityPoor() const;
     double qGlobalRescueUsefulPct() const;
+    void qMaybeStartGlobalRescueQualityCooldown();
     bool qGlobalRescueSoftCapActive() const;
     bool qActionPassesGlobalSoftCap(int action) const;
     void qTickActionCooldowns();
