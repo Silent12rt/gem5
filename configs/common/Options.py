@@ -324,7 +324,7 @@ def addNoISAOptions(parser):
         default=False,
     )
     parser.add_argument(
-        "--q-learning-global-rescue-quality-min-samples", type=int, default=16
+        "--q-learning-global-rescue-quality-min-samples", type=int, default=12
     )
     parser.add_argument(
         "--q-learning-global-min-rescue-useful-pct", type=float, default=3.0
@@ -338,7 +338,7 @@ def addNoISAOptions(parser):
     parser.add_argument(
         "--q-learning-global-rescue-soft-cap-min-useful-pct",
         type=float,
-        default=8.0,
+        default=6.25,
     )
     parser.add_argument(
         "--q-learning-global-rescue-soft-cap-max-admission-rate",

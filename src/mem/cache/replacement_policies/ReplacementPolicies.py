@@ -267,7 +267,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "outcomes have too few useful hits",
     )
     q_learning_global_rescue_quality_min_samples = Param.Int(
-        16,
+        12,
         "Completed rescue outcomes required before applying the global "
         "rescue quality gate",
     )
@@ -285,7 +285,7 @@ class LRUEmissaryRP(BaseReplacementPolicy):
         "rescue soft cap",
     )
     q_learning_global_rescue_soft_cap_min_useful_pct = Param.Float(
-        8.0,
+        6.25,
         "Below this workload-wide useful-hit percentage, allow only low-risk "
         "Q-learning actions instead of the full action set",
     )
